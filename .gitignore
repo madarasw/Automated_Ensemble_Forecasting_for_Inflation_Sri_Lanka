@@ -1,0 +1,33 @@
+# --- Excel / Office lock files -----------------------------------------------
+# Created while a workbook is open. Never commit these.
+~$*
+*.tmp
+
+# --- Python / Jupyter ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# --- Google Colab scratch -----------------------------------------------------
+sample_data/
+drive/
+
+# --- Forecasting framework scratch --------------------------------------------
+# AutoGluon writes fitted model artefacts here by default. They are large and
+# regenerable - they must not reach the repository.
+AutogluonModels/
+ag_models/
+**/AutogluonModels/
+
+# --- Operating system ---------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Keep -------------------------------------------------------------------
+# Data/*.csv and Results/*.xlsx ARE tracked on purpose - the paper promises the
+# work is reproducible. Do not add them here.
+# If a results file ever approaches 100 MB, tell the team before committing;
+# GitHub rejects files above that limit.
