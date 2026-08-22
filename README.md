@@ -12,6 +12,10 @@ If you have just cloned this repository and are not sure what to do, this file i
 briefing. It explains what the research is, what every folder is for, what order the experiments
 run in, and which decisions are still open. You do not need to read anything else to get started.
 
+**Start with `Research.xlsx`.** It is the top-level project plan — four phases, 37 activities,
+with a tab per phase. It tells you what to do and in what order. `Main_Experiment_Plan.xlsx` holds
+the 1,562 individual forecasting runs and comes into play in Phase 3.
+
 **The single most important thing to understand:** the experiments do **not** run in tab order.
 We run **Tabs 5–21 first** to find out which evaluation metric is best, and only then run Tabs 1–4.
 See [Execution order](#execution-order) below.
@@ -64,7 +68,8 @@ indices, data frequencies, evaluation metrics, and economic regimes.
 ```
 Automated_Ensemble_Forecasting_for_Inflation_Sri_Lanka/
 ├── README.md                    <- this file
-├── Main_Experiment_Plan.xlsx    <- THE PLAN. 1,562 experiments. Source of truth.
+├── Research.xlsx                <- TOP-LEVEL PLAN. 4 phases, 37 activities. Start here.
+├── Main_Experiment_Plan.xlsx    <- THE EXPERIMENTS. 1,562 runs. Used in Phase 3.
 ├── Abstract.pdf                 <- the submitted abstract
 │
 ├── Code/
@@ -93,6 +98,46 @@ its own tab, and loops through that tab's rows. 21 notebooks, not 1,562.
 Each `Code/Tab*/` folder currently contains only a `.gitkeep` file. That is a placeholder — Git
 cannot store an empty folder, so the file exists purely to preserve the structure. Ignore it and
 delete it once the real notebook lands in that folder.
+
+---
+
+## Research.xlsx — the top-level plan
+
+This is the project tracker. Open it first.
+
+| Sheet | What it is |
+|---|---|
+| `Overview` | How the two workbooks fit together |
+| `Phase1_Get_Ready` | Data, and the decisions everything else depends on — 10 activities |
+| `Phase2_Build_Pilot` | Build the machinery on one experiment, then one tab — 10 activities |
+| `Phase3_Run` | Stage 1 then Stage 3, executed through the experiment plan — 7 activities |
+| `Phase4_Analyse_Write` | Answer the three research questions, write the paper — 10 activities |
+
+One row is one activity. The columns are `Activity ID`, `Description`, `What to finalize`,
+`Results`, `Who did it?`, `Done?`.
+
+**`What to finalize` is the column that matters.** It states the decision or output that must be
+locked before moving on — the thing that stops an activity sitting at "mostly done" for three
+weeks. Activity P1-05 is not finished when the target transformation has been *discussed*; it is
+finished when one choice is written down and applied everywhere.
+
+**Seven rows are shaded orange.** These are gates, where getting it wrong invalidates later work
+rather than merely delaying it:
+
+- `P1-05` – `P1-08` — the target transformation, the AutoGluon controls, copying them into all 21
+  configs, and the metric selection rule. Settings frozen here cannot change once runs begin
+- `P2-08`, `P2-09` — the Tab 5 pilot and the compute projection. The go/no-go before committing
+  to 1,562 runs
+- `P3-03` — choosing the evaluation metric, which must follow the rule agreed in `P1-08`
+
+### How the two workbooks relate
+
+`Research.xlsx` tracks the **project**. `Main_Experiment_Plan.xlsx` tracks the **runs**.
+
+Phase 3 has only 7 activity rows because at that level "run tabs 5–21" is a single activity — the
+1,173 runs inside it are tracked row by row in the experiment plan. The two meet at activity
+`P3-02`: as each run completes, fill in `status`, `runtime_sec`, `hardware` and `run_date` in the
+plan. That is also where the execution-time evidence the abstract promises comes from.
 
 ---
 
@@ -390,7 +435,9 @@ editing the plan before touching it.
 
 | Question | Answer |
 |---|---|
-| Where is the plan? | `Main_Experiment_Plan.xlsx`, `MASTER` sheet |
+| Where do I start? | `Research.xlsx`, Phase 1 tab |
+| What is the next action right now? | `P1-01` — get the data. `Data/` is still empty |
+| Where are the 1,562 experiments? | `Main_Experiment_Plan.xlsx`, `MASTER` sheet |
 | Which experiments first? | Tabs 5–21 (Stage 1) |
 | What is EM1? | Not decided yet — it is whichever metric wins Stage 1 |
 | Where do notebooks go? | `Code/<tab folder>/<tab name>.ipynb` — one per tab |
