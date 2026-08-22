@@ -67,11 +67,13 @@ Automated_Ensemble_Forecasting_for_Inflation_Sri_Lanka/
 ├── Main_Experiment_Plan.xlsx    <- THE PLAN. 1,562 experiments. Source of truth.
 ├── Abstract.pdf                 <- the submitted abstract
 │
-├── Code/                        <- Google Colab notebooks, one per experiment
+├── Code/
+│   ├── experiments.csv          <- machine-readable mirror of the plan (1,562 rows)
+│   ├── common/
+│   │   ├── config_Tab01_HCPI_EM1.yaml    <- settings for that tab
+│   │   └── ... one config per tab (21) ...
 │   ├── Tab01_HCPI_EM1/
-│   ├── Tab02_FCPI_EM1/
-│   ├── Tab03_CCPI_EM1/
-│   ├── Tab04_ECPI_EM1/
+│   │   └── Tab01_HCPI_EM1.ipynb <- ONE notebook, loops all of that tab's experiments
 │   ├── Tab05_HCPI_EM2/
 │   │   ... one folder per tab in the plan ...
 │   └── Tab21_HCPI_EM18/
@@ -83,9 +85,14 @@ Automated_Ensemble_Forecasting_for_Inflation_Sri_Lanka/
                                     e.g. Results_Tab05_HCPI_EM2.xlsx
 ```
 
+**One notebook per tab, not one per experiment.** Within a tab, the only thing that changes
+between experiments is the forecast origin — the index, frequency, evaluation metric and every
+setting stay the same. So each tab has a single notebook that reads `experiments.csv`, filters to
+its own tab, and loops through that tab's rows. 21 notebooks, not 1,562.
+
 Each `Code/Tab*/` folder currently contains only a `.gitkeep` file. That is a placeholder — Git
 cannot store an empty folder, so the file exists purely to preserve the structure. Ignore it and
-delete it once real notebooks land in that folder.
+delete it once the real notebook lands in that folder.
 
 ---
 
@@ -223,11 +230,13 @@ notebook and the results sheet. If an experiment is added later, give it the nex
 ### Notebooks
 
 ```
-Code/<tab folder>/<experiment ID>.ipynb
+Code/<tab folder>/<tab name>.ipynb
 ```
-Example: `Code/Tab05_HCPI_EM2/T05-M-001.ipynb`
+Example: `Code/Tab05_HCPI_EM2/Tab05_HCPI_EM2.ipynb` — one notebook covering all 69 experiments in
+that tab.
 
-The exact path for every experiment is in the `notebook` column of the plan.
+The experiment ID identifies a **row in `experiments.csv`**, not a file. The `notebook` and
+`tab_config` columns of the plan give the exact paths for every experiment.
 
 ### Results
 
@@ -248,6 +257,39 @@ The exact destination for every experiment is in the `result_workbook` and `resu
 | 5–21 | Point forecasts + quantile forecasts + ensemble weight distribution |
 
 Plus, on every run: execution time and the hardware it ran on.
+
+---
+
+## How a notebook works
+
+Each tab notebook does the same five things:
+
+1. Read `Code/common/config_<tab name>.yaml` — the settings constant across that tab
+2. Read `Code/experiments.csv` and filter to `tab_name == "<tab name>"`
+3. For each row: train on data from the series start through `train_data_end`, forecast the
+   horizon, record what the tab is specified to record
+4. Write results to `Results/Results_<tab name>.xlsx`, one sheet per `exp_id`, plus a small
+   `run_config.json` capturing exactly what was used — framework version, seed, hardware,
+   resolved training window
+5. **Skip any experiment that already has results.** A Colab session will disconnect somewhere in
+   a 69-experiment loop; without this, a drop at experiment 60 costs all 60
+
+### The tab config files
+
+`Code/common/config_<tab name>.yaml` holds everything constant for that tab: the index, the
+evaluation metric, what to record, and the shared `controls:` block.
+
+These are plain text, so Git can diff and merge them — unlike the `.xlsx`. That is why the
+notebooks read the CSV and the YAML rather than the workbook directly.
+
+**The `controls:` block must be identical in all 21 files.** Fill it in once and copy it
+everywhere. See the next section for why this matters.
+
+### After editing the plan
+
+`experiments.csv` and the YAML files are **generated from** `Main_Experiment_Plan.xlsx`. If you
+change the plan, regenerate them, or the notebooks will keep running the old version. Ask Claude
+to regenerate them from the workbook.
 
 ---
 
@@ -351,7 +393,8 @@ editing the plan before touching it.
 | Where is the plan? | `Main_Experiment_Plan.xlsx`, `MASTER` sheet |
 | Which experiments first? | Tabs 5–21 (Stage 1) |
 | What is EM1? | Not decided yet — it is whichever metric wins Stage 1 |
-| Where do notebooks go? | `Code/<tab folder>/<experiment ID>.ipynb` |
+| Where do notebooks go? | `Code/<tab folder>/<tab name>.ipynb` — one per tab |
+| What is an experiment ID then? | A row in `Code/experiments.csv`, not a file |
 | Where do results go? | `Results/Results_<tab name>.xlsx`, one sheet per experiment |
 | How much data does a run get? | See the green `train_data_end` column |
 | Is Question 4 in scope? | No — deferred to later |

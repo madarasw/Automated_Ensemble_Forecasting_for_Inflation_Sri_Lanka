@@ -3,6 +3,10 @@
 ~$*
 *.tmp
 
+# --- Temporary / scratch ------------------------------------------------------
+_to_delete/
+*_delete_me.*
+
 # --- Python / Jupyter ---------------------------------------------------------
 __pycache__/
 *.py[cod]
@@ -27,7 +31,8 @@ Thumbs.db
 desktop.ini
 
 # --- Keep -------------------------------------------------------------------
-# Data/*.csv and Results/*.xlsx ARE tracked on purpose - the paper promises the
-# work is reproducible. Do not add them here.
+# Code/experiments.csv, Code/common/*.yaml, Data/*.csv and Results/*.xlsx ARE
+# tracked on purpose - the paper promises the work is reproducible.
+# Do not add them here.
 # If a results file ever approaches 100 MB, tell the team before committing;
 # GitHub rejects files above that limit.

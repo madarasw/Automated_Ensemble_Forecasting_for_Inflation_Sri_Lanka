@@ -1,0 +1,62 @@
+# Configuration for Tab07_HCPI_EM4
+#
+# Everything in this file is CONSTANT across all 69 experiments in this tab.
+# The only thing that varies between experiments is the forecast origin, which comes
+# from Code/experiments.csv (filter: tab_name == "Tab07_HCPI_EM4").
+#
+# The values under `controls:` MUST be identical in all 21 tab configs. The Stage 1
+# comparison only works if the evaluation metric is the sole difference between tabs -
+# if one tab runs with a different time limit or seed, the weight difference gets
+# blamed on the metric when it was really the setting.
+
+tab: "Tab 7"
+tab_name: "Tab07_HCPI_EM4"
+stage: "Stage 1 - run first"
+
+target:
+  index: "HCPI"
+  index_name: "Headline Consumer Price Index"
+  frequencies: ["Monthly"]
+
+evaluation:
+  metric_code: "EM4"
+  metric_name: "MAPE"
+  metric_family: "Point"
+  # This metric is the ENSEMBLE-FITTING OBJECTIVE. Every other metric is still
+  # computed afterwards for reporting.
+
+records:
+  point_forecasts: true
+  quantile_forecasts: true
+  weight_distribution: true
+  execution_time: true
+
+experiments:
+  source: "Code/experiments.csv"
+  filter: 'tab_name == "Tab07_HCPI_EM4"'
+  count: 69
+  # Each row supplies: exp_id, frequency, horizon_start, horizon_end, n_periods,
+  # train_data_end. Train on data from series start THROUGH train_data_end inclusive.
+
+output:
+  workbook: "Results/Results_Tab07_HCPI_EM4.xlsx"
+  sheet_per_experiment: true      # sheet name = exp_id
+  run_config_json: true           # write resolved settings beside each result
+
+runtime:
+  resume: true                    # skip any exp_id that already has results -
+                                  # a Colab disconnect must not cost the whole tab
+
+controls:
+  framework: "AutoGluon-TimeSeries"
+  framework_version: ""            # TO BE FILLED - see CONTROLS sheet
+  preset_model_pool: ""            # TO BE FILLED - see CONTROLS sheet
+  time_limit_s: ""            # TO BE FILLED - see CONTROLS sheet
+  num_val_windows: ""            # TO BE FILLED - see CONTROLS sheet
+  quantile_levels: "0.1, 0.2, ... 0.9 (suggested)"
+  target_transformation: ""            # TO BE FILLED - see CONTROLS sheet
+  random_seed: ""            # TO BE FILLED - see CONTROLS sheet
+  training_window: "Full series to train_data_end"
+  data_source_and_vintage: ""            # TO BE FILLED - see CONTROLS sheet
+  series_start_date: ""            # TO BE FILLED - see CONTROLS sheet
+  hardware: "Colab (record per run)"
