@@ -1,0 +1,18 @@
+paper_code,artifact_code,metric,family,fitted_on
+EM1,EM2,Mean absolute error (MAE),Point accuracy,level
+EM2,EM3,Root mean squared error (RMSE),Point accuracy,level
+EM3,EM4,Mean absolute percentage error (MAPE),Point accuracy,level
+EM4,EM5,Symmetric MAPE (sMAPE),Point accuracy,level
+EM5,EM6,Mean absolute scaled error (MASE),Point accuracy,level
+EM6,EM7,Root mean squared scaled error (RMSSE),Point accuracy,level
+EM7,EM8,Weighted absolute percentage error (WAPE),Point accuracy,level
+EM8,EM9,Weighted quantile loss (WQL),Probabilistic,level
+EM9,EM10,Scaled quantile loss (SQL),Probabilistic,level
+EM10,EM11,Mean quantile loss (MQL),Probabilistic,level
+EM11,EM12,Dynamic time warping (DTW),Temporal similarity,year_on_year
+EM12,EM13,Soft dynamic time warping (Soft-DTW),Temporal similarity,year_on_year
+EM13,EM14,Wasserstein distance,Temporal similarity,year_on_year
+EM14,EM15,Temporal distortion index (TDI),Temporal similarity,year_on_year
+EM15,EM16,Trend direction accuracy (TDA),Directional,year_on_year
+EM16,EM17,Directional accuracy (DA),Directional,year_on_year
+EM17,EM18,Turning point accuracy (TPA),Directional,year_on_year
