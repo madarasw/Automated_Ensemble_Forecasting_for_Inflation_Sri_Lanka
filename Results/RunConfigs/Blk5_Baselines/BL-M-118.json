@@ -1,0 +1,32 @@
+{
+  "exp_id": "BL-M-118",
+  "tab_name": "Blk5_Baselines",
+  "block": "4.1",
+  "index": "HCPI",
+  "frequency": "Monthly",
+  "origin_no": 15,
+  "regime_of_horizon_start": "R2 Pre-crisis build-up",
+  "train_data_start": "2015-03-01",
+  "train_data_end": "2021-02-01",
+  "horizon_start": "2021-03-01",
+  "horizon_end": "2022-02-01",
+  "n_periods": 12,
+  "total_window": 72,
+  "train_rows_actual": 72,
+  "seasonal_period": 12,
+  "naive_runtime_sec": 0.0,
+  "drift_runtime_sec": 0.0,
+  "atkeson_ohanian_runtime_sec": 0.0,
+  "seasonal_naive_runtime_sec": 0.0,
+  "arima_runtime_sec": 0.515,
+  "arima_order": "(2, 1, 2)",
+  "total_runtime_sec": 0.515,
+  "methods": [
+    "naive",
+    "drift",
+    "atkeson_ohanian",
+    "seasonal_naive",
+    "arima"
+  ],
+  "method_notes": "naive=random walk; drift=RW + trailing 12m slope; atkeson_ohanian=last 12m inflation carried forward; seasonal_naive=value 12m earlier; arima=grid p,d,q in {0,1,2} excl. p=q=0 by AIC (see Code/common/baselines.py)"
+}

@@ -1,0 +1,14 @@
+{
+  "exp_id": "T22-M-099",
+  "tab_name": "Tab22_Baselines",
+  "index": "FCPI",
+  "frequency": "Monthly",
+  "train_data_end": "2022-05-01",
+  "horizon_end": "2023-05-01",
+  "n_periods": 12,
+  "seasonal_naive_runtime_sec": 0.0,
+  "arima_runtime_sec": 0.5,
+  "arima_order": "(0, 1, 2)",
+  "total_runtime_sec": 0.5,
+  "method": "seasonal_naive + ARIMA(grid search by AIC)"
+}

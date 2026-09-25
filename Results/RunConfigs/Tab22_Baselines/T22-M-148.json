@@ -1,0 +1,14 @@
+{
+  "exp_id": "T22-M-148",
+  "tab_name": "Tab22_Baselines",
+  "index": "CCPI",
+  "frequency": "Monthly",
+  "train_data_end": "2020-09-01",
+  "horizon_end": "2021-09-01",
+  "n_periods": 12,
+  "seasonal_naive_runtime_sec": 0.0,
+  "arima_runtime_sec": 0.515,
+  "arima_order": "(2, 1, 2)",
+  "total_runtime_sec": 0.515,
+  "method": "seasonal_naive + ARIMA(grid search by AIC)"
+}

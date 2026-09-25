@@ -1,0 +1,74 @@
+{
+  "exp_id": "T05-M-002",
+  "tab_name": "Tab05_HCPI_EM2",
+  "index": "HCPI",
+  "frequency": "Monthly",
+  "eval_metric_code": "EM2",
+  "train_data_end": "2020-01-01",
+  "horizon_start": "2020-02-01",
+  "horizon_end": "2021-01-01",
+  "n_periods": 12,
+  "runtime_sec": 406.53,
+  "gpu_name": "NVIDIA GeForce RTX 5050 Laptop GPU",
+  "gpu_vram_gb": 8.55,
+  "gpu_driver_version": "592.15",
+  "cuda_runtime": "13.0",
+  "autogluon_timeseries_version": "1.6.3",
+  "random_seed": 123,
+  "time_limit_s": 900,
+  "num_val_windows": 3,
+  "model_pool_requested": {
+    "Naive": {},
+    "SeasonalNaive": {},
+    "Theta": {},
+    "AutoARIMA": {},
+    "AutoETS": {},
+    "AutoCES": {},
+    "NPTS": {},
+    "DirectTabular": {},
+    "RecursiveTabular": {},
+    "DeepAR": {},
+    "PatchTST": {},
+    "TemporalFusionTransformer": {},
+    "TiDE": {},
+    "Chronos": [
+      {
+        "model_path": "small"
+      },
+      {
+        "model_path": "bolt_small"
+      }
+    ],
+    "Chronos2": {}
+  },
+  "model_pool_fitted": [
+    "Naive",
+    "SeasonalNaive",
+    "RecursiveTabular",
+    "DirectTabular",
+    "NPTS",
+    "Theta",
+    "Chronos2",
+    "AutoARIMA",
+    "AutoETS",
+    "Chronos[small]",
+    "Chronos[bolt_small]",
+    "TemporalFusionTransformer",
+    "DeepAR",
+    "PatchTST",
+    "TiDE",
+    "AutoCES"
+  ],
+  "quantile_levels": [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9
+  ],
+  "target_transformation": "index level, 2021=100 (frozen decision)"
+}
