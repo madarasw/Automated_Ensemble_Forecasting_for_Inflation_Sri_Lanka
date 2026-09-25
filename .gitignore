@@ -36,3 +36,59 @@ desktop.ini
 # Do not add them here.
 # If a results file ever approaches 100 MB, tell the team before committing;
 # GitHub rejects files above that limit.
+
+# --- fetch_data.py raw response cache ------------------------------------------
+# Cached raw API/workbook payloads behind Data/*.csv, added separately from the
+# tracked Data/*.csv outputs pending a decision on whether to commit raw payloads.
+Data/raw/
+
+# --- Phase 2 build scratch ------------------------------------------------------
+# Manually-downloaded wheel files (pip's --extra-index-url resolver picked a CPU-only
+# torch despite a CUDA index; these were fetched directly to install the right build)
+# and pip/curl install logs. Multi-GB, fully regenerable, never committed.
+.wheel_cache/
+install_*.log
+curl_*.log
+p201_run*.log
+pilot_samples.log
+tab01_s1_monthly_run.log
+Main_Experiment_Plan.xlsx.bak
+
+# --- Results provenance ----------------------------------------------------------
+# Results/*.xlsx is tracked on purpose (see above); the per-run JSON provenance next
+# to it is small and also tracked - no entry needed here, listed for clarity only.
+
+# --- Repository sync (2026-09-25) ------------------------------------------------
+# Root-level logs only (install, curl and run logs); Results/Logs/ is a separate decision.
+/*.log
+
+# Intermediate workbook snapshots, superseded by the final Results/*.xlsx.
+Results/Backups/
+
+# Manual editing backups of the manuscript.
+Paper/CBSL_research/main_BEFORE_*.tex
+
+# LaTeX build artefacts.
+*.aux
+*.bbl
+*.blg
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.toc
+
+# Working files kept locally, not part of the published record.
+Results/Logs/
+/2.1/
+/Abstract.pdf
+/INDEX_SET_CHANGE.md
+/Test plan.txt
+/GITHUB_SYNC_PROMPT.md
+Paper/*.tex
+Paper/*.bak*
+Paper/*.zip
+Paper/ziBzxb8s
+Paper/CBSL_research/Possible Errors.xlsx
+Paper/CBSL_research/references_BEFORE_*.bib
+*_delete_me*.*
