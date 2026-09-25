@@ -1,0 +1,2149 @@
+\documentclass[12pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{setspace}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{threeparttable}
+\usepackage{subcaption}
+\usepackage{url}
+\usepackage{natbib}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks = true,
+    urlcolor   = blue,
+    linkcolor  = black,
+    citecolor  = black,
+}
+
+\setstretch{1.3}
+
+% Marks content that depends on an open decision or on results.
+% Every \tbd{...} must be resolved before submission.
+\newcommand{\tbd}[1]{\textcolor{red}{[#1]}}
+
+% Repository link. \repolink{<text>} hyperlinks <text> to the repository.
+% For a double-blind submission, comment out the second line and uncomment the
+% third, then restore both for the camera-ready version.
+\newcommand{\repobase}{https://github.com/madarasw/Automated_Ensemble_Forecasting_for_Inflation_Sri_Lanka}
+\newcommand{\repolink}[1]{\href{\repobase}{#1}}
+%\newcommand{\repolink}[1]{#1}
+
+\title{\textbf{
+Does the Fitting Objective Matter? Benchmarking Automated
+Ensemble Forecasts of Sri Lankan Inflation
+}}
+
+\author{
+Anonymous Author 1\\
+Affiliation withheld for review\\[1ex]
+Anonymous Author 2\\
+Affiliation withheld for review
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+% ==================================================================
+\begin{abstract}
+The metric supplied to an automated ensemble framework is both the criterion by
+which forecasts are judged and the objective that selects and weights the
+models, yet its effect on the ensemble has not been examined. Using
+AutoGluon-TimeSeries with a library of seventeen statistical, tree-based, deep
+learning and pretrained foundation models, we run 405 experiments on three Sri
+Lankan price indices at seventeen monthly origins with a fixed 124-month
+rolling window, using each of seventeen candidate metrics in turn as the
+fitting objective while every other setting is held fixed. The objective proves
+to be a first-order design choice. Its strongest effect is on whether an
+ensemble forms at all: three of the seventeen place almost all weight on a
+single model, two of them in every run. Among the rest the mean effective
+ensemble size ranges from 2.2 to 3.8 models, and the best objective changes
+with the horizon over which the forecast is judged, so a single twelve-month
+ranking misrepresents the nowcast. Against a random walk the framework improves
+year-on-year accuracy by 22.9 per cent on food inflation, by 2.5 per cent on
+headline and not at all on the Colombo index; the random walk is the strongest
+of four naive benchmarks on all three. Every rejection in thirty-six
+Diebold--Mariano tests goes against the ensemble, and none survives a
+multiple-testing correction. The evaluation period follows the 2022 crisis, so
+the findings concern forecasting under stabilisation. Code, the experiment
+register and results are released openly on \repolink{GitHub}.
+\end{abstract}
+
+\noindent\textbf{Keywords:} inflation forecasting; automated machine learning;
+ensemble forecasting; forecast combination; time-series foundation models;
+forecast evaluation; Sri Lanka
+
+% ==================================================================
+\section{Introduction}
+\label{sec:introduction}
+
+Inflation forecasts are a core input to monetary policy, yet inflation is
+notoriously difficult to forecast: simple univariate benchmarks are often hard
+to beat, and the relative performance of models shifts as the economy changes
+\citep{atkeson2001, stock2007, faust2013, rossi2013}. These difficulties are
+amplified in emerging economies, and Sri Lanka offers an extreme recent case.
+After the sovereign default of 2022, headline inflation measured by the Colombo
+Consumer Price Index peaked at 69.8\% in September 2022, with food inflation at
+94.9\% \citep{cbsl2022sep}. Inflation then fell rapidly: the year-on-year
+Colombo index rate turned negative in September 2024 and remained so until July
+2025, reaching $-4.2$\% in February 2025. The national index followed the same
+path, negative from September 2024 to April 2025. The post-crisis period therefore poses a distinct problem: models
+trained on recent history have learned from a sample dominated by the crisis,
+yet must forecast an economy in which inflation is low and at times negative.
+Under the flexible inflation-targeting framework of the Central Bank of Sri
+Lanka Act No.~16 of 2023 \citep{cbslact2023}, reliable forecasts in this
+setting are especially valuable.
+
+Automated ensemble forecasting frameworks are a natural candidate. Combining
+forecasts tends to outperform any single model \citep{bates1969,
+timmermann2006}, and AutoGluon-TimeSeries \citep{shchur2023autogluon} extends
+this idea by fitting statistical, tree-based, deep learning and pretrained
+foundation models and combining them into a weighted ensemble that optimises a
+user-specified metric. Three gaps limit what is known about such systems.
+First, evidence for Sri Lanka comes mainly from one-step-ahead forecasts on
+fixed train--test splits, which say little about the multi-month horizons
+relevant to policy \citep{slchapter2025, raj2024}. Second, ensemble forecasts
+are usually reported without any evidence that an ensemble was in fact formed,
+although a framework that places all of its weight on one model is not
+combining forecasts at all. Third, the metric
+supplied to the framework is not only the criterion by which forecasts are
+judged but also the objective that selects and weights the models. Because
+different metrics reward different properties of a forecast
+\citep{gneiting2011}, the choice of objective may change the ensemble itself,
+an effect that has not been examined.
+
+We address these gaps for the headline National Consumer Price Index (HCPI),
+its food component (FCPI) and the Colombo Consumer Price Index (CCPI), built
+from primary releases of the Department of Census and Statistics. Using
+AutoGluon-TimeSeries with seventeen candidate models, we produce
+twelve-month-ahead forecasts at 17 monthly origins, covering outcomes from May
+2024 to August 2026. The experiments proceed in two stages. First, each of
+seventeen metrics is used in turn as the fitting objective, with all other
+settings held fixed, at six origins for each index (306 experiments). This
+isolates the effect of the objective on the ensemble. Second, the three most
+promising objectives for each index are re-evaluated at the eleven remaining
+origins (99 experiments), which were not used to choose them. Forecasts are
+judged on year-on-year inflation by a four-metric panel and compared with
+standard benchmarks. The study asks three questions:
+\begin{enumerate}
+    \item How accurately does an automated ensemble forecast Sri Lankan
+          inflation over a twelve-month horizon, relative to standard
+          benchmarks?
+    \item Does the fitting objective determine whether an ensemble forms at
+          all, and how concentrated that ensemble is?
+    \item Which fitting objective produces the best forecasts for each index?
+\end{enumerate}
+
+The paper contributes a multi-step benchmark of automated ensemble forecasting
+for Sri Lankan inflation in the post-crisis period, a controlled analysis of
+how the fitting objective determines whether an ensemble forms and how
+concentrated it is, and a transparent,
+reproducible procedure for choosing that objective. The findings concern
+monthly, univariate forecasting under stabilisation rather than during the
+crisis itself. Section~\ref{sec:literature} reviews related work,
+Section~\ref{sec:methodology} describes the data and methods,
+Section~\ref{sec:results} presents the results, and
+Section~\ref{sec:conclusion} concludes.
+% ==================================================================
+\section{Related Work}
+\label{sec:literature}
+
+\subsection{Inflation Forecasting and Its Benchmarks}
+\label{sec:lit-inflation}
+
+A long-standing finding in inflation forecasting is that sophisticated models
+struggle to beat simple benchmarks. \citet{atkeson2001} showed that, for the
+United States after the mid-1980s, Phillips-curve models were no more accurate
+than a naive forecast that inflation over the next year would equal inflation
+over the past year. \citet{stock2007} found that multivariate models rarely
+improved on univariate ones, and \citet{faust2013} concluded that competitive
+forecasts typically combine an accurate estimate of current inflation with a
+slowly moving trend. A related difficulty is instability: the relative
+performance of models changes as the economy changes, so a model that
+forecasts well in one period may fail in the next \citep{rossi2013}. Both
+problems are more severe in emerging economies, where inflation is more
+volatile and more exposed to exchange-rate and commodity-price shocks
+\citep{ha2019inflation}. For these reasons, any new forecasting method should
+be judged against simple benchmarks such as the random walk and the
+\citet{atkeson2001} forecast, and not only against other complex models.
+
+\subsection{Machine Learning and Foundation Models}
+\label{sec:lit-ml}
+
+Machine learning methods can improve inflation forecasts, mainly by capturing
+nonlinear relationships. Random forests have outperformed standard benchmarks
+for US inflation \citep{medeiros2021}, with the largest gains in periods of
+high uncertainty \citep{goulet2022}, and recurrent neural networks have been
+applied to both aggregate and disaggregated inflation
+\citep{almosova2023, barkan2023}. For Sri Lanka, a recent comparison of
+statistical, machine learning, deep learning and hybrid models for monthly
+Colombo CPI inflation found that ensembles improved on individual models,
+although a simple average was statistically as accurate as weighted
+combinations \citep{slchapter2025}. Machine learning has also been used to
+forecast inflation during the 2022 crisis \citep{raj2024}. These studies,
+however, evaluate one-step-ahead forecasts on a single train--test split,
+which does not show how forecasts perform over the multi-month horizons that
+matter for policy.
+
+A more recent development is the time-series foundation model: a large,
+typically transformer-based network pretrained on many series and applied to
+a new series without further training. Examples include Chronos
+\citep{ansari2024chronos, ansari2025chronos2}, TimesFM \citep{das2024timesfm}
+and Moirai \citep{woo2024moirai}. These models perform well on general
+benchmarks, but evidence on economic data is limited and mixed. Some
+outperformed simple benchmarks for GDP growth \citep{tsfmgdp2025}, while gains
+for equity returns were small and rarely significant \citep{noguer2026}.
+Because they draw on patterns learned elsewhere, foundation models may be most
+useful when the local training sample is short, as it is for a monthly series
+of about ten years. Whether they add value for Sri Lankan inflation is an open
+question.
+
+\subsection{Forecast Combination and Ensemble Weights}
+\label{sec:lit-ensembles}
+
+Combining forecasts from several models is one of the most reliable ways to
+improve accuracy \citep{bates1969, timmermann2006, wang2023combination}.
+However, estimated combination weights often perform no better than a simple
+average, because weights estimated from short samples contain noise that can
+outweigh the benefit of optimising them \citep{smith2009, claeskens2016}. This
+has a direct implication for any analysis of weights: a pattern in the weights
+reflects a genuine preference only if it is stable, and not merely noise.
+
+AutoGluon-TimeSeries forms its ensemble by ensemble selection
+\citep{caruana2004}. The procedure repeatedly adds the model, drawn with
+replacement from the fitted library, that most improves the validation score.
+Each model's weight is the share of additions it received, so the weights are
+non-negative, sum to one and are often concentrated on a few models. These
+weights record which models the ensemble relied on. Studies that use
+automated ensembles, however, usually report only the final forecast, and we
+are not aware of work that examines how the weights change with the fitting
+objective in a macroeconomic setting.
+
+\subsection{Evaluation Metrics as Fitting Objectives}
+\label{sec:lit-evaluation}
+
+The choice of evaluation metric is not neutral. Each metric is minimised by a
+particular feature of the forecast distribution: squared error by the mean and
+absolute error by the median. The best forecast therefore depends on the
+metric used to judge it \citep{gneiting2011, kolassa2020}. Metrics also differ
+in practical behaviour. Percentage errors become unstable when the target is
+close to zero, which matters for Sri Lankan inflation because it turned
+negative in 2024. Scaled errors avoid this problem by dividing by the
+in-sample error of a naive forecast \citep{hyndman2006}. Quantile-based
+scores evaluate the whole forecast distribution rather than a single value
+\citep{gneiting2007}, and a scaled version was used to evaluate uncertainty
+forecasts in the M5 competition \citep{makridakis2022m5unc}.
+
+Other metrics capture properties that pointwise errors miss. Dynamic time
+warping and its smooth variant, Soft-DTW, compare the shape of two paths while
+allowing for differences in timing, so a forecast that anticipates a peak one
+month early is not penalised as heavily as one that misses it entirely
+\citep{sakoe1978, cuturi2017}. The temporal distortion index measures how
+large those timing differences are \citep{friasparedes2017, leguen2019}. For
+policy, the direction of inflation and its turning points can matter as much
+as its level. Directional accuracy can be tested against chance
+\citep{pesaran1992}, and turning points can be dated with rules adapted from
+business-cycle analysis \citep{harding2002}.
+
+In most inflation-forecasting studies, metrics are used only after the fact,
+to rank forecasts produced independently of them. In an automated ensemble,
+the metric also serves as the fitting objective: it decides which models are
+selected and how they are weighted. We are not aware of work that compares
+point, probabilistic, temporal and directional metrics in this role, or that
+examines how the choice changes the composition of the ensemble. This gap,
+together with the lack of multi-step evidence for Sri Lanka and of analysis
+of ensemble weights, motivates the present study.
+
+% ============================================================================
+%  Methodology -- corrected to the experiments actually executed
+%  Scope: Block A (metric search) + Block B (origin extension), monthly only.
+%  Requires: amsmath, booktabs, graphicx (standard Overleaf packages).
+%  If \tbd is not already defined in your preamble, add:
+%      \newcommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
+% ============================================================================
+
+% ============================================================================
+%  Methodology -- corrected to the experiments actually executed
+%  Scope: Block A (metric search) + Block B (origin extension), monthly only.
+%  Requires: amsmath, booktabs, graphicx (standard Overleaf packages).
+%  If \tbd is not already defined in your preamble, add:
+%      \newcommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
+% ============================================================================
+
+% ============================================================================
+%  Methodology -- corrected to the experiments actually executed
+%  Scope: Block A (metric search) + Block B (origin extension), monthly only.
+%  Requires: amsmath, booktabs, graphicx (standard Overleaf packages).
+%  If \tbd is not already defined in your preamble, add:
+%      \newcommand{\tbd}[1]{\textcolor{red}{[TBD: #1]}}
+% ============================================================================
+
+\section{Methodology}
+\label{sec:methodology}
+
+This section defines the forecasting task and evaluation scheme, describes the
+ensemble framework and the candidate metrics, and sets out the experimental
+design. One principle governs the design: within each comparison, only the
+factor under study varies, and every other setting is held fixed.
+
+The study reported here comprises two executed experiment blocks, both at
+monthly frequency. Quarterly and annual frequencies, exogenous covariates and
+variation in training-window length were specified in the research plan but
+were not run; they are identified as future work in
+Section~\ref{sec:method-scope}.
+
+\subsection{Forecasting Task}
+\label{sec:method-task}
+
+Let $y_{i,t}$ denote price index
+$i \in \mathcal{I} = \{\text{HCPI}, \text{FCPI}, \text{CCPI}\}$ at month $t$,
+where HCPI is the headline National Consumer Price Index, FCPI its food
+component, and CCPI the Colombo Consumer Price Index. Where the context is
+clear we write $y_t$. At forecast origin $\tau$ --- the index of the last observed
+month --- the forecaster observes a fixed window of history ending at $\tau$ and
+produces, for steps
+$h = 1, \dots, H$ with $H = 12$, a point forecast $\hat{y}_{\tau+h|\tau}$ and
+quantile forecasts $\hat{q}^{\,\alpha}_{\tau+h|\tau}$ at the nine deciles
+$\mathcal{A} = \{0.1, 0.2, \dots, 0.9\}$.
+
+The forecast target is the \emph{index level}, rebased to $2021 = 100$. This
+choice was fixed before any experiment was run and applied throughout. Because
+policy interest attaches to the inflation rate rather than the index, every
+metric is additionally computed \emph{post hoc} on two derived
+representations: the month-on-month change and the year-on-year change,
+\begin{equation}
+    \pi_{\tau+h} = 100\left(\frac{y_{\tau+h}}{y_{\tau+h-12}} - 1\right),
+    \qquad
+    \hat{\pi}_{\tau+h|\tau}
+        = 100\left(\frac{\hat{y}_{\tau+h|\tau}}{y_{\tau+h-12}} - 1\right).
+    \label{eq:yoy}
+\end{equation}
+Both use the same denominator, the realised index twelve months earlier. For a
+twelve-step horizon that value always lies inside the training window, so
+\eqref{eq:yoy} introduces no look-ahead. It follows that the year-on-year error
+is the level error rescaled by a slowly varying divisor. Forecasts are
+univariate.
+
+\subsection{Data}
+\label{sec:method-data}
+
+All three series are constructed from Department of Census and Statistics
+primary releases and, where a base change occurs, chain-linked at the first
+overlapping month rather than by annual-average splicing. Every series is
+expressed on the $2021 = 100$ basis over its full length. HCPI and FCPI run
+from January 2014 to August 2026; CCPI, which has a longer published history,
+runs from September 2012 to August 2026.
+
+Internationally redistributed versions of these series were not used as the
+primary source, because redistributed headline series are not always continuous
+in the underlying index and the two indices diverge materially in late 2024.
+Each series used here is assembled from the primary releases of the Department
+of Census and Statistics and is continuous in its own index throughout.
+
+\subsection{Rolling-Origin Evaluation}
+\label{sec:method-rolling}
+
+Forecasts are evaluated with a \emph{fixed rolling-window}, rolling-origin
+scheme \citep{tashman2000}. At each origin, the training sample comprises the
+124 months immediately preceding the horizon: 100 months for fitting and the
+final 24 months held out for internal validation. The window start advances
+with the origin, so every model is fitted on the same amount of history, and
+no observation from the horizon enters training. The origin then advances by
+one month and the ensemble is refitted from scratch.
+
+The window length determines how many origins are available. Each origin
+requires 124 months of history before it and 12 months of realised outcomes
+after it. With 152 monthly observations for HCPI and FCPI, exactly 17 origins
+satisfy both conditions (Table~\ref{tab:origins}). CCPI has a longer history
+and would admit more origins, but it is held to the same 17 so that the three
+indices are compared on identical forecast dates.
+
+\begin{table}[htbp]
+\centering
+\caption{Forecast origins. Each horizon covers twelve months. The number of
+origins is the maximum available with a 124-month window, given the length of
+the HCPI and FCPI series.}
+\label{tab:origins}
+\begin{tabular}{lcccc}
+\toprule
+Index & Steps ($H$) & First horizon & Last horizon & Origins \\
+\midrule
+HCPI & 12 & May 2024--Apr 2025 & Sep 2025--Aug 2026 & 17 \\
+FCPI & 12 & May 2024--Apr 2025 & Sep 2025--Aug 2026 & 17 \\
+CCPI & 12 & May 2024--Apr 2025 & Sep 2025--Aug 2026 & 17 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The forecast outcomes therefore run from May 2024 to August 2026, the period
+after the 2022 crisis, including the months of negative inflation that began
+in late 2024. Every training window, by contrast, contains the crisis. The
+design thus tests the forecasting problem described in
+Section~\ref{sec:introduction}: forecasting a stabilising economy from a
+history dominated by the crisis. Forecasts made during the crisis itself would
+require a shorter training window and are left to future work.
+
+Adjacent origins are one month apart while horizons are twelve months long,
+so consecutive forecasts share eleven of their twelve target months. The 17
+origins together cover 28 calendar months of outcomes, equivalent to about
+2.3 non-overlapping twelve-month horizons. The 17 origins are therefore not
+treated as independent observations, and statistical inference is adjusted
+accordingly (Section~\ref{sec:method-benchmarks}).
+
+\subsection{Automated Ensemble Framework}
+\label{sec:method-framework}
+
+All forecasts are produced with AutoGluon-TimeSeries
+\citep{shchur2023autogluon}, version 1.6.3. At each origin the framework fits
+the model library in Table~\ref{tab:models}, comprising fourteen models trained
+from scratch on the window and three pretrained foundation models applied
+zero-shot. The final 24 months of the training sample are held out for
+validation, evaluated as two successive windows of twelve months. Each
+candidate is fitted on the remaining data and scored on the validation windows.
+
+\begin{table}[htbp]
+\centering
+\caption{Candidate models in the ensemble library. All seventeen were fitted at
+every origin; each received non-zero weight in at least one run.}
+\label{tab:models}
+\begin{tabular}{ll}
+\toprule
+Family & Models \\
+\midrule
+Statistical       & Naive, SeasonalNaive, AutoETS, AutoARIMA, AutoCES, Theta, NPTS \\
+Tree-based        & DirectTabular, RecursiveTabular \\
+Deep learning     & DeepAR, TiDE, PatchTST, TemporalFusionTransformer, DLinear \\
+Foundation models & Chronos[small], Chronos[bolt\_small], Chronos-2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ensemble is built by greedy ensemble selection \citep{caruana2004}.
+Starting from an empty ensemble, the procedure repeatedly adds, with
+replacement, the candidate that most improves the validation score of the
+averaged forecast, for $K$ iterations, $K$ being left at the framework's
+default. A
+candidate selected $c_m$ times receives weight $w_m = c_m / K$, so $w_m \ge 0$
+and $\sum_m w_m = 1$. The same weights are applied to point and quantile
+forecasts:
+\begin{equation}
+    \hat{y}^{\,\text{ens}}_{\tau+h|\tau} = \sum_{m} w_m \, \hat{y}^{(m)}_{\tau+h|\tau},
+    \qquad
+    \hat{q}^{\,\alpha,\,\text{ens}}_{\tau+h|\tau} = \sum_{m} w_m \, \hat{q}^{\,\alpha,(m)}_{\tau+h|\tau}.
+    \label{eq:ensemble}
+\end{equation}
+The validation score is computed with the evaluation metric supplied to the
+framework. That metric is therefore the ensemble's \emph{fitting objective}: it
+determines which candidates enter the ensemble and with what weight. Isolating
+this mechanism is the purpose of Block~A.
+
+Every setting in Table~\ref{tab:controls} is identical across all 405
+experiments. Without this, a difference in time budget between two runs could
+be mistaken for an effect of the objective.
+
+\begin{table}[htbp]
+\centering
+\caption{Settings held constant across all experiments.}
+\label{tab:controls}
+\begin{tabular}{ll}
+\toprule
+Setting & Value \\
+\midrule
+Framework version                   & AutoGluon-TimeSeries 1.6.3 \\
+Model library                       & Explicit pool, Table~\ref{tab:models} \\
+Foundation models                   & Enabled (three Chronos variants) \\
+Training window                     & 124 months (100 fit + 24 validation) \\
+Forecast horizon                    & 12 months \\
+Time limit per fit                  & 900 seconds \\
+Validation windows                  & 2 (of 12 months each) \\
+Ensemble selection iterations ($K$) & Framework default \\
+Quantile levels ($\mathcal{A}$)     & $0.1, 0.2, \dots, 0.9$ \\
+Target transformation               & Index level, $2021 = 100$ \\
+Full-data refitting (\texttt{refit\_full}) & Disabled \\
+Random seed                         & 123 \\
+Hardware                            & One NVIDIA RTX 5050 laptop GPU, all runs \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The design is deliberately wide rather than deep: 405 fits, each of a library of
+seventeen models, on one laptop GPU. The complete suite consumed 30.9 GPU-hours,
+a mean of 274 seconds per run within a 900-second ceiling. Two settings follow
+from that budget and are stated here rather than defended later. Full-data
+refitting (\texttt{refit\_full}) was disabled, since re-fitting every model on
+the combined training and validation data would have roughly doubled the cost of
+each run for no gain in the comparison that the design is built to make, in
+which every configuration is treated identically. And the validation block is
+fixed at 24 months in two windows at every origin, rather than tuned per origin,
+so that the ensemble weights of two configurations differ only through the
+objective. Both choices buy comparability at a price, and
+Section~\ref{sec:method-scope} states what that price is.
+
+\subsection{Evaluation Metrics}
+\label{sec:method-metrics}
+
+We consider seventeen candidate metrics in four families
+(Table~\ref{tab:metrics}). Let $e_h = y_{\tau+h} - \hat{y}_{\tau+h|\tau}$ denote
+the level error at step $h$ and let $m = 12$ be the seasonal period. Recall from
+Section~\ref{sec:method-rolling} that the forecast origin $\tau$ indexes the last
+\emph{observed} month, and that the training window is the fixed-length block
+\begin{equation}
+    \mathcal{W}_\tau = \{\,\tau - L + 1,\; \dots,\; \tau\,\}, \qquad L = 124 ,
+\end{equation}
+so that $y_{\tau+1}, \dots, y_{\tau+H}$ are the realised outcomes over the
+horizon and are never seen during fitting.
+
+Three of the seventeen metrics --- MASE (EM5), RMSSE (EM6) and SQL (EM9) --- are
+\emph{scaled}: each divides by a summary of the errors that a one-season-ahead
+seasonal naive forecast would have incurred \emph{within the training window}.
+That forecast predicts $y_t$ by $y_{t-m}$, so its error at month $t$ is
+$y_t - y_{t-m}$, and the two summaries used are its mean absolute and mean
+squared value,
+\begin{equation}
+    s_1 = \frac{1}{L-m} \sum_{t=\tau-L+m+1}^{\tau} \big| y_t - y_{t-m} \big|,
+    \qquad
+    s_2 = \frac{1}{L-m} \sum_{t=\tau-L+m+1}^{\tau} \big( y_t - y_{t-m} \big)^2 .
+    \label{eq:scaling}
+\end{equation}
+The sums run over the $L - m = 112$ months of $\mathcal{W}_\tau$ for which the
+lagged value $y_{t-m}$ also lies inside the window; no observation outside
+$\mathcal{W}_\tau$, and in particular none from the horizon, enters the scaling.
+
+Equation~\eqref{eq:scaling} is the scaling of the index level. When a scaled
+metric is evaluated on the year-on-year representation, as every metric of the
+assessment panel of Section~\ref{sec:method-assessment} is, the scaling is
+recomputed from that representation rather than carried over from the level.
+Writing $\pi_t = 100\,(y_t / y_{t-m} - 1)$ for the realised year-on-year rate,
+the denominator is the mean absolute seasonal naive error of the year-on-year
+series itself,
+\begin{equation}
+    s_1^{\pi} = \frac{1}{L-2m} \sum_{t=\tau-L+2m+1}^{\tau}
+                 \big| \pi_t - \pi_{t-m} \big| ,
+    \label{eq:scaling-yoy}
+\end{equation}
+taken over the $L - 2m = 100$ months of $\mathcal{W}_\tau$ for which both
+$\pi_t$ and $\pi_{t-m}$ are defined inside the window. MASE and SQL on the
+year-on-year basis divide by $s_1^{\pi}$ and not by $s_1$, so that
+percentage-point errors are scaled by a percentage-point denominator.
+
+The magnitude of $s_1^{\pi}$ governs how the reported values should be read.
+Every admissible training window contains the 2022 crisis, during which
+year-on-year inflation rose above 69 per cent and then fell below zero, so the
+seasonal naive error of the year-on-year series is large: across the six
+Block~A origins $s_1^{\pi}$ averages 15.0 percentage points on HCPI, 19.9 on
+FCPI and 13.5 on CCPI. A MASE of $0.10$ therefore does not mean that the
+forecast is ten times more accurate than a seasonal naive forecast over the
+evaluation period, where that benchmark's own error is about two percentage
+points (Table~\ref{tab:bench17}); it means that the error is one tenth of the
+in-sample seasonal naive error of a window dominated by the crisis. The scaled
+metrics are used here as scale-free comparators across objectives, indices and
+origins. Whether the framework beats a naive rule over the evaluation period is
+a separate question, answered directly and in percentage points in
+Section~\ref{sec:res-benchmarks17}.
+
+Two consequences of the fixed rolling window deserve statement. First, because
+the window advances with the origin rather than accumulating, $s_1$ and $s_2$ are
+re-estimated afresh at every origin; scaled metrics are therefore directly
+comparable across models \emph{at} an origin but carry an origin-specific
+denominator when pooled \emph{across} origins. Second, at any given origin $s_1$
+and $s_2$ are scalars common to all candidates, so they rescale every model
+equally and cannot by themselves alter the ranking of models within that origin.
+
+The native implementations of EM5, EM6 and EM9 obtain the seasonal period by
+inference from the series frequency rather than receiving it as an explicit
+argument, which yields $m = 12$ for the monthly data used here; this was
+verified against the recorded scaling denominators. At another frequency the
+inferred and intended values could differ and would need to be checked.
+
+\begin{table}[htbp]
+\centering
+\caption{The seventeen candidate fitting objectives. The final column records
+the representation on which each objective is computed \emph{during ensemble
+selection}: EM1--EM10 on the index level, EM11--EM17 on the year-on-year
+transform (Section~\ref{sec:method-metrics}). It is not the basis of
+assessment, which is the year-on-year transform for every objective and every
+table in Section~\ref{sec:results}. EM11--EM17 are therefore fitted on the same
+representation on which they are later judged, and EM1--EM10 are not; the two
+properties vary together and the confound this creates is recorded in
+Section~\ref{sec:method-scope}. Codes run EM1--EM17 here; the released code and
+result workbooks label the same seventeen metrics EM2--EM18, an offset of one,
+because an earlier draft reserved EM1 for a placeholder. The mapping is EM$k$
+(paper) $=$ EM$(k{+}1)$ (artifacts).}
+\label{tab:metrics}
+\begin{tabular}{llll}
+\toprule
+Code & Metric & Family & Fitted on \\
+\midrule
+EM1  & Mean absolute error (MAE)                 & Point accuracy      & Level \\
+EM2  & Root mean squared error (RMSE)            & Point accuracy      & Level \\
+EM3  & Mean absolute percentage error (MAPE)     & Point accuracy      & Level \\
+EM4  & Symmetric MAPE (sMAPE)                    & Point accuracy      & Level \\
+EM5  & Mean absolute scaled error (MASE)         & Point accuracy      & Level \\
+EM6  & Root mean squared scaled error (RMSSE)    & Point accuracy      & Level \\
+EM7  & Weighted absolute percentage error (WAPE) & Point accuracy      & Level \\
+EM8  & Weighted quantile loss (WQL)              & Probabilistic       & Level \\
+EM9 & Scaled quantile loss (SQL)                & Probabilistic       & Level \\
+EM10 & Mean quantile loss (MQL)                  & Probabilistic       & Level \\
+EM11 & Dynamic time warping (DTW)                & Temporal similarity & Year-on-year \\
+EM12 & Soft dynamic time warping (Soft-DTW)      & Temporal similarity & Year-on-year \\
+EM13 & Wasserstein distance                      & Temporal similarity & Year-on-year \\
+EM14 & Temporal distortion index (TDI)           & Temporal similarity & Year-on-year \\
+EM15 & Trend direction accuracy (TDA)            & Directional         & Year-on-year \\
+EM16 & Directional accuracy (DA)                 & Directional         & Year-on-year \\
+EM17 & Turning point accuracy (TPA)              & Directional         & Year-on-year \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Notation.}
+Table~\ref{tab:notation} collects the symbols used below. Throughout, $h$ indexes
+the step within the horizon and all sums over $h$ run from $1$ to $H$.
+
+\begin{table}[htbp]
+\centering
+\caption{Notation used in the metric definitions.}
+\label{tab:notation}
+\begin{tabular}{ll}
+\toprule
+Symbol & Meaning \\
+\midrule
+$\tau$ & Forecast origin: index of the last observed month \\
+$H = 12$ & Forecast horizon, in steps \\
+$L = 124$ & Length of the fixed rolling training window, in months \\
+$m = 12$ & Seasonal period \\
+$\mathcal{W}_\tau$ & Training window $\{\tau-L+1,\dots,\tau\}$ \\
+$y_{\tau+h}$ & Realised index level at step $h$ (2021 $=$ 100) \\
+$\hat{y}_{\tau+h|\tau}$ & Point forecast of $y_{\tau+h}$ made at origin $\tau$ \\
+$e_h$ & Level error, $y_{\tau+h} - \hat{y}_{\tau+h|\tau}$ \\
+$\pi_{\tau+h}$, $\hat{\pi}_{\tau+h|\tau}$ & Realised and forecast year-on-year rates, eq.~\eqref{eq:yoy}, in percentage points \\
+$\pi_\tau$ & Realised year-on-year rate at the origin (the anchor) \\
+$\mathcal{A}$ & Quantile levels, $\{0.1,\dots,0.9\}$; $|\mathcal{A}| = 9$ \\
+$\hat{q}^{\,\alpha}_{\tau+h|\tau}$ & Forecast $\alpha$-quantile of $y_{\tau+h}$ \\
+$s_1$, $s_2$ & Mean absolute and mean squared seasonal naive level error over $\mathcal{W}_\tau$ \\
+$s_1^{\pi}$ & As $s_1$, but computed on the year-on-year series, eq.~\eqref{eq:scaling-yoy} \\
+$\phi \in \mathcal{P}$ & A monotone alignment path from $(1,1)$ to $(H,H)$; $\phi^\ast$ the optimal one \\
+$\gamma$ & Soft-DTW smoothing parameter, fixed at $1.0$ \\
+$\mathcal{T}(\cdot)$ & Set of turning points of a path \\
+$\mathbf{1}\{\cdot\}$ & Indicator function \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Point accuracy (EM1--EM7).}
+These measure the average size of the level error, differing in how they
+penalise large errors and how they normalise for scale:
+\begin{align}
+    \text{MAE}   &= \tfrac{1}{H}\textstyle\sum_{h} |e_h|, &
+    \text{RMSE}  &= \sqrt{\tfrac{1}{H}\textstyle\sum_{h} e_h^2}, \\
+    \text{MAPE}  &= \tfrac{1}{H}\textstyle\sum_{h} \dfrac{|e_h|}{|y_{\tau+h}|}, &
+    \text{sMAPE} &= \tfrac{1}{H}\textstyle\sum_{h} \dfrac{2|e_h|}{|y_{\tau+h}| + |\hat{y}_{\tau+h|\tau}|}, \\
+    \text{MASE}  &= \dfrac{\text{MAE}}{s_1}, &
+    \text{RMSSE} &= \sqrt{\dfrac{\tfrac{1}{H}\sum_{h} e_h^2}{s_2}}, \\
+    \text{WAPE}  &= \dfrac{\sum_{h} |e_h|}{\sum_{h} |y_{\tau+h}|} . & &
+\end{align}
+RMSE and RMSSE square the error and so are the more sensitive to a single large
+miss; MAE, MAPE and WAPE are linear in the error. MAPE, sMAPE and WAPE are
+reported as fractions, not percentages. MASE and RMSSE are scale-free by
+construction, which makes them comparable across the three indices; MAPE and
+WAPE achieve the same only while the denominator stays bounded away from zero.
+
+As fitting objectives these are applied to the index level, where that condition
+holds. Applied \emph{post hoc} to the year-on-year representation they become
+unstable, because Sri Lankan inflation crossed zero during the sample period.
+They are reported on the index level only.
+
+\paragraph{Probabilistic accuracy (EM8--EM10).}
+Quantile forecasts are scored with the pinball loss, a proper scoring rule for
+the $\alpha$-quantile \citep{gneiting2007}. We adopt the convention of the
+framework's implementation, which carries a factor of two so that the loss at
+the median coincides with the absolute error:
+\begin{equation}
+    \rho_\alpha(y, q) = 2\big(\alpha - \mathbf{1}\{y < q\}\big)(y - q),
+    \qquad \rho_{0.5}(y,q) = |y - q| .
+\end{equation}
+It is aggregated over the nine levels in three ways, differing only in
+normalisation:
+\begin{align}
+    \text{WQL} &= \frac{1}{|\mathcal{A}|} \sum_{\alpha \in \mathcal{A}}
+        \frac{\sum_{h} \rho_\alpha\big(y_{\tau+h}, \hat{q}^{\,\alpha}_{\tau+h|\tau}\big)}
+             {\sum_{h} |y_{\tau+h}|}, \\
+    \text{SQL} &= \frac{1}{H|\mathcal{A}|} \sum_{\alpha \in \mathcal{A}} \sum_{h}
+        \frac{\rho_\alpha\big(y_{\tau+h}, \hat{q}^{\,\alpha}_{\tau+h|\tau}\big)}{s_1}, \\
+    \text{MQL} &= \frac{1}{H|\mathcal{A}|} \sum_{\alpha \in \mathcal{A}} \sum_{h}
+        \rho_\alpha\big(y_{\tau+h}, \hat{q}^{\,\alpha}_{\tau+h|\tau}\big).
+\end{align}
+MQL is the unnormalised mean, in index points; WQL divides by the realised level
+and SQL by the seasonal naive scale, so both are scale-free. Because the three
+share a numerator, any ranking difference between them arises solely from the
+denominator; Section~\ref{sec:results} reports that in practice they select
+near-identical ensembles.
+
+\paragraph{Temporal similarity (EM11--EM14).}
+These are computed on the year-on-year transform \eqref{eq:yoy}, not on the index
+level. On a monotonically rising index a shape-based criterion is close to
+degenerate, since almost any forecast reproduces the upward trend; the transform
+restores discriminating power.
+
+Dynamic time warping asks how well the forecast reproduces the \emph{shape} of
+the realised path once timing differences are permitted. Note that DTW and
+Soft-DTW use different local costs, following their respective reference
+implementations --- absolute difference for the former, squared difference for
+the latter:
+\begin{equation}
+    c^{\text{\,DTW}}_{jk} = \big|\pi_{\tau+j} - \hat{\pi}_{\tau+k|\tau}\big|,
+    \qquad
+    c^{\text{\,S}}_{jk} = \big(\pi_{\tau+j} - \hat{\pi}_{\tau+k|\tau}\big)^2 ,
+\end{equation}
+\begin{align}
+    \text{DTW} &= \min_{\phi \in \mathcal{P}} \sum_{(j,k) \in \phi} c^{\text{\,DTW}}_{jk}, \\
+    \text{Soft-DTW}_\gamma &= -\gamma \log \sum_{\phi \in \mathcal{P}}
+        \exp\Big(-\tfrac{1}{\gamma} \sum_{(j,k) \in \phi} c^{\text{\,S}}_{jk}\Big),
+\end{align}
+with $\gamma = 1.0$ for every run \citep{sakoe1978, cuturi2017}. Soft-DTW
+replaces the hard minimum with a smooth one, so that near-optimal alignments also
+contribute; as $\gamma \to 0$ it approaches DTW under the squared cost. Both are
+computed by exact dynamic programming with no bandwidth constraint, which is
+inexpensive at $H = 12$.
+
+Where DTW measures agreement in shape after warping, the temporal distortion
+index measures how much warping was required --- the displacement of the optimal
+path $\phi^\ast$ from the diagonal \citep{friasparedes2016}:
+\begin{equation}
+    \text{TDI} = \frac{1}{(H-1)^2 \, |\phi^\ast|}
+        \sum_{(j,k) \in \phi^\ast} (j - k)^2 ,
+\end{equation}
+where $|\phi^\ast|$ is the number of steps in the optimal path. The denominator
+is a conservative upper bound that places TDI in $[0,1]$, with $0$ denoting an
+alignment along the diagonal --- no timing distortion --- and values near $1$ a
+maximally displaced alignment. The normalising constant of the original
+formulation is not reproduced here; $(H-1)^2 |\phi^\ast|$ is the computable
+reformulation adopted in the subsequent shape-and-time literature
+\citep{friasparedes2017, leguen2019}, and it is the one implemented in the
+released code.
+
+The Wasserstein metric compares the two paths as point clouds in the
+(time, value) plane. Writing $a_j = (j,\; \pi_{\tau+j})$ and
+$b_k = (k,\; \hat{\pi}_{\tau+k|\tau})$ and letting $\mathcal{S}_H$ be the set of
+permutations of $\{1,\dots,H\}$, the discrete optimal-transport cost under a
+squared-Euclidean ground cost is
+\begin{equation}
+    W = \frac{1}{H} \min_{\sigma \in \mathcal{S}_H}
+        \sum_{j=1}^{H} \big\| a_j - b_{\sigma(j)} \big\|_2^2 .
+\end{equation}
+Because both clouds carry $H$ equally weighted points, the transport problem is
+an exact bipartite assignment and is solved without approximation
+\citep{panaretos2019}. Unlike the one-dimensional form, which compares only the
+distribution of values and is invariant to reordering in time, this formulation
+penalises a forecast that produces the right set of values at the wrong times.
+One property should be stated plainly: the time axis is measured in unitless step
+counts and the value axis in percentage points, and the implementation does not
+rescale them onto a common footing, so the relative weight of timing against
+magnitude error is fixed implicitly by that choice.
+
+\paragraph{Directional accuracy (EM15--EM17).}
+These are likewise computed on the year-on-year transform. Both the realised and
+the forecast path are anchored at $\pi_\tau$, the realised year-on-year rate at
+the origin, which is known at forecast time. Writing
+$\Delta \pi_{\tau+h} = \pi_{\tau+h} - \pi_{\tau+h-1}$ and
+$\Delta \hat{\pi}_{\tau+h} = \hat{\pi}_{\tau+h|\tau} - \hat{\pi}_{\tau+h-1|\tau}$
+with $\pi_{\tau|\tau} \equiv \hat{\pi}_{\tau|\tau} \equiv \pi_\tau$,
+\begin{align}
+    \text{DA}  &= \frac{1}{H} \sum_{h=1}^{H}
+        \mathbf{1}\big\{\operatorname{sgn}(\Delta \hat{\pi}_{\tau+h})
+        = \operatorname{sgn}(\Delta \pi_{\tau+h})\big\}, \\
+    \text{TDA} &= \frac{1}{H} \sum_{h=1}^{H}
+        \mathbf{1}\big\{\operatorname{sgn}(\hat{\pi}_{\tau+h|\tau} - \pi_\tau)
+        = \operatorname{sgn}(\pi_{\tau+h} - \pi_\tau)\big\}.
+\end{align}
+DA is the step-to-step formulation of \citet{pesaran1992}: did the forecast call
+correctly whether inflation rose or fell this month? TDA is the coarser
+origin-relative question of whether inflation ended up above or below where it
+started. A comparison counts as a match only when the two signs are exactly
+equal, including the zero case: flat against flat is a match, flat against any
+non-zero value is not.
+
+Turning points are identified as strict local extrema of the year-on-year path,
+with the origin value prepended so that a turning point at the first horizon step
+is detectable. This follows \citet{bry1971}, simplified by dropping the
+minimum-phase-length rule, which has no sensible operating point on a twelve-step
+horizon. With a tolerance of one period,
+\begin{equation}
+    \text{TPA} = \frac{1}{|\mathcal{T}(\pi)|}
+        \sum_{t \in \mathcal{T}(\pi)}
+        \mathbf{1}\big\{\exists\, f \in \mathcal{T}(\hat{\pi}) : |t - f| \le 1 \big\},
+\end{equation}
+the share of realised turning points the forecast also flagged, within one month.
+When the horizon contains no realised turning point TPA is undefined; a neutral
+value of $0.5$ is returned and the frequency of this case is recorded and
+reported. Because the framework minimises its objective, the directional measures
+enter as $1 - \text{DA}$, $1 - \text{TDA}$ and $1 - \text{TPA}$.
+
+\paragraph{Implementation, verification and coarseness.}
+EM1--EM10 are provided by the framework; EM11--EM17 are implemented as custom
+scorers. The definitions above were verified against the recorded outputs by
+recomputing every metric independently from the stored forecasts and outcomes:
+EM1--EM10 agree with the framework's own values to a relative difference below
+$10^{-14}$, and the fixed-window scaling statistics of
+equation~\eqref{eq:scaling} reproduce the recorded MASE and RMSSE to the same
+tolerance.
+
+On a twelve-step horizon DA and TDA each take only thirteen distinct values and
+TPA fewer still, so ties between candidate models are frequent. Because greedy
+ensemble selection resolves ties by retaining the candidate tried first, a coarse
+objective can yield an ensemble concentrated on a single, effectively arbitrary
+model. We therefore report the effective number of models
+(Section~\ref{sec:method-weights}) for every objective, and treat concentration
+as a diagnostic of objective degeneracy rather than as a property of the data.
+
+\subsection{Assessment of Forecast Quality}
+\label{sec:method-assessment}
+
+The seventeen metrics of Section~\ref{sec:method-metrics} are candidate
+\emph{fitting objectives}: each is offered to the framework in turn to see how it
+shapes the ensemble. A separate and smaller question is how the resulting
+forecasts should be \emph{judged}. Reporting all seventeen scores for every run
+would invite selective reading, so a single four-metric assessment panel is
+fixed, one metric per dimension of forecast quality, and applied uniformly to
+every objective, index and origin. The panel and the selection rule of
+Section~\ref{sec:method-selection} were both settled after Block~A had been run
+and before Block~B was run; neither was pre-registered, and
+Section~\ref{sec:method-scope} states what follows.
+
+All four are evaluated on the year-on-year representation \eqref{eq:yoy}, since
+that is the quantity a central bank acts upon.
+
+\begin{table}[htbp]
+\centering
+\caption{The four-metric assessment panel. Each metric addresses a distinct
+dimension of forecast quality; all are evaluated on the year-on-year transform.}
+\label{tab:panel}
+\begin{tabular}{llll}
+\toprule
+Dimension & Metric & Code & Question it answers \\
+\midrule
+Point accuracy & MASE      & EM5  & How large is the average error? \\
+Uncertainty    & SQL       & EM9  & Are the prediction intervals honest? \\
+Temporal shape & Soft-DTW  & EM12 & Is the path the right shape, allowing for phase shift? \\
+Direction      & TPA       & EM17 & Are cyclical reversals identified? \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Point accuracy: MASE.}
+Percentage-based errors are unusable on a year-on-year series that crosses zero,
+as Sri Lankan inflation did during the sample. MASE avoids this because its
+denominator $s_1^{\pi}$ is the seasonal naive error of the year-on-year series
+over the training window \eqref{eq:scaling-yoy}, a quantity bounded away from
+zero irrespective of how close the realised rate comes to it. Being scale-free, it is also comparable across
+origins with different baseline volatility and across the three indices
+\citep{hyndman2006}.
+
+\paragraph{Uncertainty: SQL.}
+The scaled quantile loss extends the same scaling to the probabilistic case,
+averaging the pinball loss over the nine deciles and dividing by the same
+$s_1^{\pi}$. It
+rewards intervals that are both well centred and appropriately narrow, and
+inherits MASE's immunity to a vanishing denominator; the M5 uncertainty
+competition adopted the same scaled construction for this reason
+\citep{makridakis2022m5unc}. Because the year-on-year transform is a strictly
+increasing affine map of the index level at each date, the level quantiles carry
+over to the year-on-year scale directly, and the year-on-year SQL is obtained by
+applying \eqref{eq:yoy} to each recorded quantile before scoring.
+
+\paragraph{Temporal shape: Soft-DTW.}
+Point errors treat a forecast that anticipates a turn by two months and one that
+misses the turn entirely as equally wrong. Soft-DTW separates the two by
+permitting phase shifts in the alignment, so that a correctly shaped but
+mistimed path is penalised less than a mis-shaped one --- the relevant
+distinction for smoothed macroeconomic cycles \citep{cuturi2017}. Two properties
+must be stated: Soft-DTW is not a metric in the strict sense, since
+$\text{Soft-DTW}_\gamma(x,x) \ne 0$ and the statistic may take negative values;
+and it is unnormalised, so it ranks models against a common outcome but is not
+comparable in level across indices.
+
+\paragraph{Direction: TPA.}
+In a heavily autocorrelated series, calling the direction of the next month is
+close to trivial, whereas identifying a reversal is the decision a policymaker
+actually faces. TPA isolates that capability, measuring the share of realised
+cyclical reversals the forecast also flagged within one month. Turning points
+are dated on the year-on-year path by the strict-local-extremum rule of
+Section~\ref{sec:method-metrics}, with no smoothing and no minimum phase
+length. That rule is coarse: on a noisy monthly series it will date as a
+reversal any single month in which the year-on-year rate changes direction,
+whether or not the change is cyclically meaningful. Realised horizons here
+contain between one and six such points, TPA consequently takes very few
+distinct values, and many objectives receive the same score
+(Section~\ref{sec:res-direction}). TPA is therefore reported as a diagnostic
+and read alongside the other three; it does not enter the selection rule of
+Section~\ref{sec:method-selection}. A Bry--Boschan dating with a minimum phase
+length, or a policy-relevant event score such as the probability that inflation
+leaves the target band, would be a better directional instrument and is left to
+further work.
+
+\paragraph{Ranking windows.}
+A policy institution does not read a twelve-month path as a single object. The
+month ahead is a nowcast, the first quarter conditions the immediate
+communication, the half year frames the policy horizon, and the full year is
+the forecast of record. The objectives are therefore ranked at four windows,
+$W \in \{1,3,6,12\}$, rather than at the twelve-month horizon alone. Let
+$S_{j,h}$ denote the score of objective $j$ at horizon $h$ under a given panel
+metric, averaged over the origins available at that stage. MASE and SQL are defined horizon by
+horizon, so the window score is the mean,
+\begin{equation}
+\bar{S}_j(W) \;=\; \frac{1}{W}\sum_{h=1}^{W} S_{j,h},
+\qquad W \in \{1,3,6,12\},
+\label{eq:window-mean}
+\end{equation}
+whereas Soft-DTW and TPA are path metrics accumulated along the alignment, so
+the window score is the cumulative value evaluated on the truncated path,
+\begin{equation}
+\tilde{S}_j(W) \;=\; S_j^{\mathrm{cum}}\!\left(y_{1:W},\hat{y}_{1:W}\right).
+\label{eq:window-cum}
+\end{equation}
+The distinction matters: averaging a cumulative path metric across horizons
+would count the first month $W$ times and the last month once. For MASE, SQL
+and Soft-DTW a lower score is better; for TPA a higher score is better. Where
+two objectives receive identical window scores they are ordered by the mean
+over the full twelve-month path, a tie-break that carries no substantive
+meaning and is flagged wherever it binds.
+
+\paragraph{Two cautions on using the panel for selection.}
+First, three of the four assessment metrics --- MASE, SQL and Soft-DTW --- are
+themselves candidate fitting objectives. An ensemble fitted on Soft-DTW and then
+judged by Soft-DTW is being evaluated on its own criterion, so the diagonal of
+the objective-by-assessment table is not comparable with its off-diagonal
+entries. We report the diagonal separately and do not treat a diagonal win as
+evidence.
+
+Second, the panel measures four different things and there is no reason to expect
+one objective to lead on all four. Where they disagree, the selection rule in
+Section~\ref{sec:method-selection} resolves the conflict by a stated priority
+rather than by an implicit average; no composite score is formed, since summing
+metrics on incommensurable scales would make the weighting arbitrary.
+
+\subsection{Experimental Design}
+\label{sec:method-design}
+
+The experiments are organised in two executed blocks
+(Table~\ref{tab:design}), together comprising 405 runs.
+
+\paragraph{Block A: objective search.}
+Each of the three indices is forecast at the six most recent origins with each
+of the seventeen candidate metrics as the fitting objective, giving
+$3 \times 17 \times 6 = 306$ experiments. Because the index, the origins and
+every setting in Table~\ref{tab:controls} are identical across the seventeen
+configurations, differences in the weights and in the resulting forecasts are
+attributable to the objective. The candidate set itself does not vary: all
+seventeen models completed training in all 306 runs, so within each
+index--origin cell the seventeen objectives weight the same seventeen fitted
+models and the objective acts only through the weighting. Where two objectives
+select identical weights the forecasts are identical in 58 of the 60 such
+Block~A pairs; the exceptions are discussed in
+Section~\ref{sec:method-scope}. All seventeen metrics
+are additionally computed \emph{post hoc} on all three representations for
+every run, so that each run can be scored under an objective other than the one
+it was fitted with.
+
+\paragraph{Block B: origin extension.}
+From Block~A a shortlist of three objectives is formed for each index
+(Section~\ref{sec:method-selection}). These are run at the eleven remaining
+admissible origins, giving $3 \times 3 \times 11 = 99$ experiments. Pooled with
+the corresponding Block~A runs, this yields the full 17 origins for each
+shortlisted objective.
+
+\begin{table}[htbp]
+\centering
+\caption{Executed experiments. All runs are monthly, at a 124-month window
+with a twelve-month horizon.}
+\label{tab:design}
+\begin{tabular}{llccr}
+\toprule
+Block & Purpose & Objectives per index & Origins & Experiments \\
+\midrule
+A & Objective search   & 17 (EM1--EM17) & 6  & 306 \\
+B & Origin extension   & 3 (shortlisted) & 11 & 99 \\
+\midrule
+\multicolumn{4}{l}{Total} & 405 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every experiment records the ensemble's point and quantile forecasts, the
+weight assigned to each candidate model, the realised outcomes, all seventeen
+metrics on all three representations, and the wall-clock time and hardware of
+the run.
+
+\subsection{Benchmarks}
+\label{sec:method-benchmarks}
+
+Ensemble accuracy is compared with four deterministic benchmarks computed at
+the same origins and horizons and from the same fixed window: the random walk
+$\hat{y}_{\tau+h|\tau} = y_\tau$; the random walk with drift, using the average
+monthly change over the trailing twelve months; the seasonal naive forecast
+$\hat{y}_{\tau+h|\tau} = y_{\tau+h-12}$; and the Atkeson--Ohanian benchmark, in
+which the next twelve months' inflation equals the last twelve months'
+\citep{atkeson2001}. The random walk is the conventional bar in this
+literature, and omitting it in favour of the seasonal naive forecast alone
+would understate the standard the ensemble must clear.
+
+Benchmarks are implemented separately from the model library rather than read
+off the ensemble's own candidates. Naive and SeasonalNaive are ensemble
+members, so using their in-library forecasts as external comparators would be
+partly circular.
+
+Differences in accuracy are tested at each forecast step $h$ across origins
+with the \citet{diebold1995} test, using the small-sample correction of
+\citet{harvey1997}. The long-run variance is estimated with a Newey--West
+estimator using the Bartlett kernel at lag $h - 1$, the horizon of the
+comparison, so that the weights decline linearly and the estimate is positive
+semi-definite by construction \citep{neweywest1987}. Because thirty-six such
+tests are reported in Section~\ref{sec:res-dm}, a Holm correction across the
+family is applied alongside the unadjusted $p$-values. Given roughly 2.3
+non-overlapping horizons in the sample, these tests are reported as indicative
+rather than decisive.
+
+\subsection{Ensemble Concentration}
+\label{sec:method-weights}
+
+Each run records the weight vector $\mathbf{w} = (w_1, \dots, w_M)$ that the
+selection procedure assigns to the $M$ candidate models. The property of that
+vector which matters for the questions asked here is its concentration, since
+an ensemble that places nearly all of its weight on one model is not combining
+forecasts. We summarise it by the effective number of models,
+\begin{equation}
+    N_{\text{eff}} = \Big(\sum_{m} w_m^2\Big)^{-1},
+    \label{eq:neff}
+\end{equation}
+which equals one when a single model receives all the weight and $M$ when the
+weights are equal. A run is called \emph{collapsed} when the largest single
+weight is at least $0.90$. Two quantities are reported in
+Section~\ref{sec:res-selection}: the share of an objective's runs that are
+collapsed, which drives the eligibility screen of
+Section~\ref{sec:method-selection}, and the mean $N_{\text{eff}}$ across runs.
+Because the index, the origins and every control of Table~\ref{tab:controls}
+are held fixed within an index, differences in either quantity between
+objectives are attributable to the objective.
+
+The full weight vector of every run is written to the result files
+(Section~\ref{sec:method-implementation}). The distribution of weight across
+model families, and the stability of weights across origins, are therefore
+recoverable but are not analysed here: with six origins per configuration and
+estimated weights known to be noisy \citep{smith2009, claeskens2016}, neither
+would be identified at this sample size.
+
+\subsection{Selection of the Fitting Objective}
+\label{sec:method-selection}
+
+The four-metric panel of Section~\ref{sec:method-assessment} is the sole
+instrument used to judge forecast quality, and the selection of the fitting
+objective follows from it directly. No other accuracy measure enters the
+decision, and no composite score is formed: the four are reported side by side
+and combined by the stated priority below.
+
+The rule is applied separately to each index, so the selected objective may
+differ across HCPI, FCPI and CCPI. Whether it does is an empirical question,
+reported in Section~\ref{sec:results}.
+
+\paragraph{Eligibility.}
+An objective is eligible for selection only if it produces an ensemble. A run
+is \emph{collapsed} when the largest single model weight is at least $0.90$
+(Section~\ref{sec:method-weights}), and an objective is ineligible for an index
+when at least half of its runs for that index are collapsed. This is the only
+definition used, and it is the one applied in Table~\ref{tab:shortlist} and in
+Section~\ref{sec:res-selection}. Ineligible objectives are retained in the
+reporting set, since their failure to discriminate is itself a result. Eligibility is a
+diagnostic screen on the mechanism, not an accuracy judgement; it is the only
+criterion applied outside the panel.
+
+\paragraph{Ranking.}
+Each eligible objective is scored on all four panel metrics, evaluated on the
+year-on-year representation, and the complete four-metric table is reported so
+that a reader who would order the dimensions differently can re-rank them. The
+ranking that drives the selection uses MASE at the twelve-month window, the
+headline measure of point accuracy at the horizon of record. Two adjustments
+precede it. The three quantile objectives are treated as a single candidate,
+because they select near-identical ensembles and are separated by less than a
+thousandth in window score; the best of the three enters the ranking. And TPA
+is not used for ranking, because it does not discriminate at any window shorter
+than twelve months and is coarse even there
+(Sections~\ref{sec:method-assessment} and \ref{sec:res-direction}).
+
+The priority placed on point accuracy is a stated choice rather than a derived
+one. It is applied identically at both stages of the design and is not
+re-optimised after the fact.
+
+\paragraph{Two stages.}
+Selection proceeds in the two stages of the experimental design. Block~A scores
+all seventeen objectives on six origins; the three highest-ranked per index form
+the shortlist carried into Block~B. Block~B scores that shortlist on eleven
+further origins, which are out of sample with respect to the shortlisting, and
+the objective selected for each index is the one ranked first on the pooled
+seventeen origins. Because the shortlist and the final choice are drawn from
+overlapping evidence, both the six-origin and the eleven-origin rankings are
+reported alongside the pooled one, so that a reversal between them is visible
+rather than absorbed.
+
+\paragraph{What the selection does not establish.}
+The rule identifies the objective that performs best within the candidate set on
+this sample. It does not establish that the resulting forecasts are accurate in
+absolute terms; that question is addressed separately against the benchmarks of
+Section~\ref{sec:method-benchmarks}. Nor does it establish that the choice
+transfers to other windows, frequencies or periods, none of which are varied
+here (Section~\ref{sec:method-scope}).
+
+\subsection{Scope and Limitations}
+\label{sec:method-scope}
+
+The following bound what the reported evidence can support.
+
+\begin{enumerate}
+    \item \emph{Regime coverage.} The 124-month window admits origins only from
+          April 2024, so all seventeen origins fall in the post-crisis
+          disinflation. Nothing is claimed about the crisis itself or about
+          any earlier episode.
+    \item \emph{Effective sample size.} Seventeen overlapping origins span 28
+          months of outcomes, about 2.3 independent horizons. Statistical tests
+          are correspondingly underpowered and are reported as indicative.
+    \item \emph{Selection bias and the absence of pre-registration.} Neither
+          the assessment panel nor the selection rule was registered before the
+          experiments began; both were settled after Block~A had been run and
+          before Block~B was run. The Block~A rankings are therefore in-sample
+          with respect to the rule, and only the Block~B re-evaluation is out
+          of sample. Statements elsewhere that the panel is fixed are to be
+          read in that narrower sense.
+    \item \emph{Confounded fitting basis.} Two properties of the candidate set
+          vary together. EM1--EM10 are computed on the index level and
+          EM11--EM17 on the year-on-year transform
+          (Table~\ref{tab:metrics}), while every assessment is made on the
+          year-on-year transform. An objective from the second group is
+          therefore fitted on the same representation on which it is judged,
+          and an objective from the first is not. Any advantage attributed
+          here to the temporal or directional construction of an objective is
+          confounded with that alignment of bases, and a design that varies
+          only the objective cannot separate the two. Doing so would require a
+          control in which each objective is run on both representations,
+          which was not performed.
+    \item \emph{Foundation-model contamination.} The three pretrained models
+          were released in March 2024 (Chronos\,[small]), November 2024
+          (Chronos\,[bolt\_small]) and October 2025 (Chronos-2). The
+          pretraining corpora and their cut-off dates are not published for any
+          of the three, and the release date of Chronos-2 falls inside the span
+          of forecast outcomes evaluated here (2024:05--2026:08), so its
+          training data may contain the outcomes it is asked to predict. No pretrained-disabled control was run, so the contribution
+          of the foundation models cannot be separated from possible
+          look-ahead, and any part of the reported accuracy that rests on them
+          is not established as genuine out-of-sample performance.
+    \item \emph{Length of the common sample.} HCPI and FCPI begin in 2014:01,
+          so a 124-month window admits no origin before 2024:04; with twelve
+          months of outcomes required and the data ending 2026:08, the last
+          admissible origin is 2025:08. The seventeen origins are therefore
+          fixed by data availability, not chosen. CCPI begins in 2012:09 and
+          would admit thirty-five origins on its own, but the common set was
+          retained so that the three indices are compared on identical dates.
+    \item \emph{The most recent data never reaches the trainable models.}
+          With \texttt{refit\_full} disabled, the tabular and deep models are
+          fitted on the first 100 months of each window; the final 24 months
+          enter only as validation. Ensemble weights are therefore chosen on
+          validation windows that, at every admissible origin, fall inside the
+          2022--24 crisis and disinflation. The weights encode which models
+          performed well while inflation was extreme and rapidly reversing, and
+          are then applied to a horizon in which it is low and stable. This is a
+          plausible part of the explanation for the framework's failure against
+          the random walk at short horizons
+          (Section~\ref{sec:res-dm}). No paired comparison with
+          \texttt{refit\_full} enabled was run, so the claim is not tested.
+    \item \emph{Metric behaviour on the year-on-year scale.} Soft-DTW is used
+          in its unnormalised form, which is not bounded below by zero and is
+          not a distance; the normalised divergence of
+          \citet{blondel2021} would be preferable. The Wasserstein
+          objective is computed on a two-dimensional ground cost in which a
+          month of time and a percentage point of inflation are given equal
+          weight, an arbitrary choice whose sensitivity was not examined.
+          Neither metric's values are comparable across window lengths.
+    \item \emph{Tie-breaking in ensemble selection.} Greedy forward selection
+          resolves ties by the order in which candidate models are tried, which
+          is arbitrary and not randomised over seeds. Where several models are
+          close on validation, the composition reported in
+          Table~\ref{tab:shortlist} is one of several that the procedure could
+          have produced.
+    \item \emph{A single series and no covariates.} Each model is fitted to
+          one univariate series of 100 training months, with no exogenous
+          information. The 2024 disinflation coincided with administered-price
+          reductions in electricity and fuel, which a univariate model cannot
+          anticipate and whose timing is in principle known in advance. A
+          global model over the three indices and their sub-components, or the
+          inclusion of known-future covariates, would be the natural next step
+          and is not attempted here.
+    \item \emph{Run-to-run variation.} A single seed was used and the deep
+          models are not bit-reproducible on a GPU, so part of the difference
+          between objectives may be run noise. The 60 Block~A pairs of
+          objectives that select identical weight vectors bound this: 58
+          reproduce each other's forecasts exactly, so the fitted models are
+          ordinarily identical within a cell. The two exceptions involve deep
+          models --- on CCPI at the 2025:03 origin two objectives placed all weight
+          on TiDE, yet differ by up to 25.1 index points. The variation is rare
+          but not negligible, and no multi-seed replication was run.
+    \item \emph{Frequency.} Monthly only. The temporal and directional metrics
+          lose meaning at lower frequencies: with a one-step annual horizon DTW
+          reduces to squared error, $W_1$ to absolute error, TDI to zero, DA and
+          TDA coincide and TPA is undefined. Quarterly and annual designs are
+          left to future work.
+    \item \emph{Univariate.} No exogenous covariates were used, and the
+          training-window length was held fixed, so neither the value of
+          macroeconomic predictors nor the effect of history length is
+          addressed here.
+\end{enumerate}
+
+\subsection{Reproducibility}
+\label{sec:method-implementation}
+
+Every run is specified by a row in a machine-readable experiment register
+giving the index, fitting objective, origin, window boundaries, horizon, and
+every control in Table~\ref{tab:controls}. Each completed run writes its
+configuration, the resolved model library, point and quantile forecasts, the
+realised outcomes, ensemble weights, all seventeen metrics on all three
+representations, and the runtime and hardware. The resolved model library
+records which models completed training: all seventeen did so in every run, so
+no comparison between objectives is affected by a differing candidate set. A
+single random seed (123) and a single machine were used throughout, so that the
+fitting objective is the only intended difference between comparable runs.
+
+We provide the source code and generated results \repolink{here}. The repository
+contains the experiment register, the configuration of every run, the analysis
+scripts that produce each table and figure in this paper, the result workbooks
+and the derived series, together with a table mapping the metric codes
+EM1--EM17 used in this paper to the codes used in the released artefacts. The release is archived under
+a version tag so that the state of the code and results corresponding to this
+paper can be retrieved exactly.
+
+% ============================================================================
+%  Results -- Part I: the four-angle assessment panel on Block A
+%  Requires: amsmath, booktabs, multirow, threeparttable, array
+%  (all standard on Overleaf). Optional: rotating, if the panel table is
+%  tight in your column width -- see the comment above Table~\ref{tab:panel_top3}.
+% ============================================================================
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Evidence Base and Ranking Protocol}
+\label{sec:res-protocol}
+
+This section reports the outcome of Block~A: the three indices forecast at the
+six most recent admissible origins under each of the seventeen candidate
+fitting objectives, a total of 306 experiments, each producing a twelve-month
+path. Every score reported below is computed on the year-on-year
+representation~\eqref{eq:yoy} of the forecast index against the realised
+year-on-year rate, and every score is averaged over the six origins before any
+ranking is formed. Forecasts are judged exclusively through the four-metric
+panel of Section~\ref{sec:method-assessment}: MASE (EM5) for point accuracy,
+SQL (EM9) for the calibration of the predictive distribution, Soft-DTW (EM12)
+for the shape of the path, and TPA (EM17) for cyclical direction. The seventeen
+objectives are the \emph{rows} of every table; the four panel metrics are the
+\emph{instruments} by which those rows are ordered, and the two roles must not
+be confused, even where the same metric appears in both.
+
+Scores are aggregated into the four ranking windows
+$W \in \{1,3,6,12\}$ defined in Section~\ref{sec:method-assessment}, by
+\eqref{eq:window-mean} for MASE and SQL and by \eqref{eq:window-cum} for
+Soft-DTW and TPA.
+
+The rankings in this subsection are raw: the eligibility screen of
+Section~\ref{sec:method-selection} is deliberately not applied, so that the
+behaviour of the degenerate objectives remains visible. It is applied in
+Section~\ref{sec:res-selection}, where the shortlist is formed.
+
+\subsection{The Four-Angle Panel}
+\label{sec:res-panel}
+
+Table~\ref{tab:panel_top3} gives the three best-performing objectives in each
+of the $4 \times 3 \times 4 = 48$ combinations of assessment angle, index and
+ranking window. Four cells are empty and seven carry tie warnings; all eleven
+belong to the directional angle, for reasons set out in
+Section~\ref{sec:res-direction}. The remaining thirty-seven cells produce a
+strict ordering over all seventeen objectives.
+
+% If this table overruns the text block, wrap it in \begin{sidewaystable}
+% ... \end{sidewaystable} from the rotating package and drop \scriptsize.
+\begin{table}[htbp]
+\centering
+\caption{Block~A, year-on-year basis: the three leading fitting objectives in
+each assessment angle, index and ranking window, with the window score in
+parentheses. MASE and SQL scores are means over $h=1,\dots,W$
+\eqref{eq:window-mean}; Soft-DTW and TPA scores are cumulative values at $W$
+\eqref{eq:window-cum}. Lower is better except for TPA, where higher is better.
+Objective codes follow Table~\ref{tab:metrics}.}
+\label{tab:panel_top3}
+\begin{threeparttable}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}l l >{\raggedright\arraybackslash}p{0.185\textwidth}
+                        >{\raggedright\arraybackslash}p{0.185\textwidth}
+                        >{\raggedright\arraybackslash}p{0.185\textwidth}
+                        >{\raggedright\arraybackslash}p{0.185\textwidth}@{}}
+\toprule
+Angle & Index & 1-month & 3-month & 6-month & 12-month \\
+\midrule
+\multirow{3}{*}{\shortstack[l]{Point\\(MASE)}}
+ & HCPI & DTW (0.0390),MQL (0.0544), WQL (0.0546)
+        & DTW (0.0514), TDA (0.0571), MQL (0.0583)
+        & MQL (0.0517), WQL (0.0520), SQL (0.0539)
+        & DTW (0.0950), MQL (0.1022), WQL (0.1022) \\
+ & FCPI & DTW (0.0208), Wasserstein (0.0256), Soft-DTW (0.0291)
+        & Soft-DTW (0.0486), Wasserstein (0.0487), DTW (0.0509)
+        & WQL (0.0697), MQL (0.0706), Soft-DTW (0.0713)
+        & MQL (0.0754), WQL (0.0755), SQL (0.0766) \\
+ & CCPI & DTW (0.0435), Soft-DTW (0.0664), TDA (0.0696)
+        & DTW (0.0556), TDA (0.0633), Soft-DTW (0.0767)
+        & DTW (0.0585), Soft-DTW (0.0775), TDA (0.0809)
+        & DTW (0.1367), Soft-DTW (0.1460), TDA (0.1579) \\
+\addlinespace
+\multirow{3}{*}{\shortstack[l]{Probabilistic\\(SQL)}}
+ & HCPI & DTW (0.0453), MQL (0.0468), WQL (0.0470)
+        & MQL (0.0507), WQL (0.0508), SQL (0.0521)
+        & MQL (0.0551), WQL (0.0552), SQL (0.0567)
+        & MQL (0.0894), WQL (0.0895), SQL (0.0903) \\
+ & FCPI & MQL (0.0355), SQL (0.0356), WQL (0.0360)
+        & MQL (0.0495), SQL (0.0498), WQL (0.0499)
+        & MQL (0.0605), WQL (0.0608), SQL (0.0611)
+        & MQL (0.0696), SQL (0.0703), WQL (0.0704) \\
+ & CCPI & DTW (0.0559), Soft-DTW (0.0628), MQL (0.0633)
+        & DTW (0.0632), MQL (0.0696), WQL (0.0712)
+        & DTW (0.0712), MQL (0.0766), WQL (0.0781)
+        & DTW (0.1197), Soft-DTW (0.1261), MQL (0.1380) \\
+\addlinespace
+\multirow{3}{*}{\shortstack[l]{Temporal\\(Soft-DTW)}}
+ & HCPI & DTW (0.5875), MQL (0.9111), WQL (0.9240)
+        & DTW (0.9007), MQL (1.3521), WQL (1.3834)
+        & MQL ($-$1.0398), WQL ($-$0.9455), SQL ($-$0.2713)
+        & DTW (30.1159), SQL (34.5797), MQL (34.9584) \\
+ & FCPI & DTW (0.2733), Soft-DTW (0.4342), WQL (0.5071)
+        & Soft-DTW (2.3252), DTW (3.1084), Wasserstein (3.2464)
+        & WQL (9.9863), MQL (10.1419), SQL (10.6362)
+        & MQL (17.3655), WQL (17.7246), SQL (18.7150) \\
+ & CCPI & DTW (0.7051), TDA (1.0492), Soft-DTW (1.0601)
+        & DTW (1.0052), TDA (1.4029), Soft-DTW (2.8501)
+        & DTW ($-$0.5400), Soft-DTW (1.6905), MQL (4.1937)
+        & DTW (66.0806), Soft-DTW (66.3794), TDA (86.9469) \\
+\addlinespace
+\multirow{3}{*}{\shortstack[l]{Directional\\(TPA)}}
+ & HCPI & \emph{undefined}
+        & DTW, RMSE, RMSSE (all 0.7500)\tnote{a}
+        & DTW, RMSE, RMSSE (all 1.0000)\tnote{b}
+        & DTW (1.0000), RMSE (0.9722), RMSSE (0.9722) \\
+ & FCPI & \emph{undefined}
+        & MAE, sMAPE, MAPE (all 1.0000)\tnote{c}
+        & MAE, sMAPE, MAPE (all 0.9167)\tnote{d}
+        & RMSE (0.9583), RMSSE (0.9583), MAE (0.9389)\tnote{g} \\
+ & CCPI & \emph{undefined}
+        & \emph{undefined}
+        & WQL, SQL, TPA (all 1.0000)\tnote{e}
+        & WQL, SQL, TPA (all 1.0000)\tnote{f} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]\scriptsize
+\item[a] 15 of 17 objectives tie at 0.7500; only three distinct scores occur.
+\item[b] 4 objectives tie at 1.0000.
+\item[c] 9 objectives tie at 1.0000; only three distinct scores occur.
+\item[d] 14 objectives tie at 0.9167.
+\item[e] 16 of 17 objectives tie at 1.0000; only two distinct scores occur.
+\item[f] 9 objectives tie at 1.0000.
+\item[g] 2 objectives tie at 0.9583.
+\item In every footnoted cell the three objectives shown are an arbitrary
+selection from a larger tied set and do not constitute a ranking. The
+\emph{undefined} cells are those in which the realised year-on-year path
+contains no turning point within the window, so no objective can be scored.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+\subsection{Point and Probabilistic Accuracy}
+\label{sec:res-point}
+
+Across the thirty-seven strictly ordered cells, the dynamic time warping
+objective (EM11) leads twenty-two and the mean quantile loss objective (EM10)
+leads eleven; weighted quantile loss and Soft-DTW account for the remaining
+four. The concentration is not uniform across the horizon. At the one-month
+window, nine cells are defined and DTW leads eight of them; the exception is
+FCPI under SQL, where MQL leads SQL by $0.0001$ and DTW is fourth, $0.0010$
+behind. At the twelve-month window the leadership divides: DTW leads six cells,
+MQL four, and two are tied.
+
+The mechanism behind this reversal is visible in the monthly profiles
+underlying the table. DTW's advantage on HCPI at $W=1$ is 0.0390 against
+0.0544 for the nearest competitor, a margin of 28~per~cent. Phase tolerance
+cannot explain an advantage at the first month, where there is no phase to
+misalign, so the recorded weights were examined instead. They do not support
+the obvious alternative either: averaged over Block~A, DTW places 0.24 of its
+weight on the Naive model against 0.41 for MQL and 0.40 for WQL, so the
+alignment objective is the \emph{less} naive-leaning of the two. What
+distinguishes it is dispersion --- DTW spreads weight across Chronos\,[small]
+(0.25), Naive (0.24) and Theta (0.15) where the quantile objectives concentrate
+on Naive and Chronos-2 --- which is consistent with its higher effective
+ensemble size in Table~\ref{tab:shortlist}. The association is recorded
+without a claim of mechanism. By the ninth month, however, the same tolerance permits a drift in
+level that the quantile objectives, fitted to a loss that penalises level error
+symmetrically across the predictive distribution, do not incur. The quantile
+family therefore overtakes DTW in the second half of the path on HCPI and FCPI,
+and the twelve-month average, being dominated by the final quarter, records the
+overtaking rather than the early advantage.
+
+The probabilistic angle yields the least discriminating comparison of the four.
+In eight of the nine defined SQL cells the three leading objectives are MQL,
+WQL and SQL, separated by at most 0.0009 in window score. This is not three
+findings but one: the three objectives are distinct weightings of the same
+pinball loss, they select ensembles with near-identical weight vectors, and SQL
+as an assessment metric cannot separate them. Reporting them as three entries
+in a shortlist would overstate the diversity of the evidence, and we treat them
+as a single candidate in Section~\ref{sec:res-selection}.
+
+\subsection{Temporal Similarity}
+\label{sec:res-temporal}
+
+The temporal angle reproduces the point-accuracy ordering almost exactly: DTW
+leads eight of the twelve Soft-DTW cells, the quantile family three and
+Soft-DTW itself one, with the same crossover between the third and sixth
+month. That two
+metrics constructed on different principles agree so closely is informative in
+itself: on these series the difference between a good path and a good level
+forecast is small, because the realised year-on-year trajectories over the six
+origins are dominated by a single monotone disinflation rather than by
+oscillation, and a path metric has little phase error left to reward.
+
+Two properties of the Soft-DTW column require comment. First, the scores are
+negative at the six-month window on HCPI ($-1.0398$ for MQL) and CCPI
+($-0.5400$ for DTW). This is a property of the smoothed minimum with
+$\gamma = 1.0$, which is not bounded below by zero; the ordering remains
+meaningful and lower is still better, but the quantity is a divergence proxy
+rather than a distance. Second, because the score accumulates along the
+alignment, its magnitude grows with $W$ and values are comparable across
+objectives only at the same window, never across windows. The rise from
+$0.9007$ at three months to $30.1159$ at twelve on HCPI is therefore a property
+of path length, not a thirty-threefold deterioration in forecast quality.
+
+\subsection{Directional Accuracy and the Limits of TPA}
+\label{sec:res-direction}
+
+The directional angle does not function as a ranking instrument, for two
+reasons that are visible in Table~\ref{tab:panel_top3}. It is undefined
+wherever the realised path contains no turning point to match: at $W=1$ a
+single observation admits no interior local extremum, and on CCPI no turning
+point falls within the first five months of any Block~A origin, so that index
+is undefined at $W=3$ as well. And where it is defined at short windows it is
+very nearly constant: at $W=3$ it takes three distinct values across the
+seventeen objectives on HCPI and on FCPI, and at $W=6$ on CCPI it takes two,
+with sixteen of the seventeen tied at $1.0000$. A metric that assigns the same
+score to sixteen of seventeen candidates carries no information for selection.
+Only at $W=12$ does it discriminate at all, and even there CCPI retains a
+nine-way tie.
+
+The cause is the dating rule rather than the sample alone. Turning points are
+strict local extrema of a noisy monthly series, with no smoothing and no
+minimum phase length (Section~\ref{sec:method-assessment}), so a single
+month's reversal in the year-on-year rate is dated as a cyclical turn. TPA is
+therefore reported as a diagnostic and excluded from the selection rule
+(Section~\ref{sec:method-selection}); a dating procedure with a minimum phase
+length, or a policy-relevant event score, would be required before a
+directional criterion could carry weight in a choice of objective.
+
+\subsection{Horizon Dependence of the Ranking}
+\label{sec:res-horizon}
+
+The central result of Block~A is that the identity of the best fitting
+objective depends on the window over which the forecast is judged, and does so
+systematically rather than randomly. On HCPI under MASE the leader is DTW at
+one, three and twelve months but MQL at six; on FCPI it changes at every window
+-- DTW, Soft-DTW, WQL, MQL for $W=1,3,6,12$ respectively. Reporting a single
+twelve-month ranking would conceal this and would recommend, for the FCPI
+nowcast, MQL --- which ranks sixth of seventeen at the one-month horizon.
+
+CCPI is the exception that makes the pattern legible. There DTW leads every one
+of the twelve defined, non-degenerate cells: all four windows under all three
+of the discriminating angles. The CCPI year-on-year path over the evaluation sample is
+the smoothest of the three, which removes the late-horizon level drift that
+costs DTW its lead on HCPI and FCPI. Where a single objective is defensible for
+an index, it is defensible because the series is smooth, not because the
+evidence is stronger; no claim is made here about why the CCPI path is smoother
+than the others.
+
+Two caveats attach to Table~\ref{tab:panel_top3} before it is used for
+selection. The first is that the rankings are raw. TDA (EM15) appears among the
+top three in six cells, yet it collapses to a single model in 83~per~cent of
+its HCPI runs and 50~per~cent of its FCPI and CCPI runs; TDI (EM14) and TPA
+(EM17), used as objectives, collapse in every run. These configurations are not
+producing ensembles, and their placings reflect one fortunate model rather than
+a combination. The eligibility screen of Section~\ref{sec:method-selection}
+removes them. The second is that six origins per cell is a small sample, and
+with a twelve-month horizon drawn from overlapping origins the effective number
+of independent observations is smaller still. Differences of the order of
+0.001, such as those separating the quantile family, are not distinguishable at
+this sample size; the shortlist in Section~\ref{sec:res-selection} is formed on
+the basis of differences an order of magnitude larger, and the origin extension
+of Block~B exists to test whether even those survive.
+% ==================================================================
+% ===========================================================================
+%  Results -- Part II: shortlist selection and the origin extension (Block B)
+%  Extends Section~\ref{sec:results}. Requires: amsmath, booktabs,
+%  threeparttable, array, multirow (standard on Overleaf).
+% ===========================================================================
+
+\subsection{Selection of the Shortlist}
+\label{sec:res-selection}
+
+The panel of Section~\ref{sec:res-panel} is now used to reduce the seventeen
+candidate objectives to three per index, which are the configurations carried
+into the origin extension. Two rules from the preceding discussion are applied
+before any ranking is read. First, the eligibility screen of
+Section~\ref{sec:method-selection} removes objectives that fail to produce an
+ensemble: an objective is ineligible for an index if it collapses onto a single
+model in half or more of its runs. Second, the three quantile objectives are
+treated as a single candidate, since Section~\ref{sec:res-point} established
+that they select near-identical ensembles and are separated by less than a
+thousandth in window score; the best of the three enters the ranking and the
+other two are set aside. The twelve-month window is used for the ranking
+itself, because it is the horizon of record and because the directional angle
+does not discriminate at any shorter window
+(Section~\ref{sec:res-direction}).
+
+These two rules also supply the answer to the second question of
+Section~\ref{sec:introduction}. With the index, the origins and every control
+of Table~\ref{tab:controls} held fixed, the fitting objective is what
+determines whether an ensemble forms. Three of the seventeen objectives do not
+produce one: TDI (EM14) and TPA (EM17) concentrate at least $0.90$ of the
+weight on a single model in every run on every index, and TDA (EM15) does so in
+83 per cent of its HCPI runs and half of its FCPI and CCPI runs. Among the
+objectives that survive the screen the effect is one of degree: the mean
+effective ensemble size in Table~\ref{tab:shortlist} ranges from 2.17 to 3.78
+models, and within the headline index it varies by a factor of 1.7, from 3.78
+under DTW to 2.24 under MQL, while on FCPI and CCPI the three shortlisted
+objectives differ by little more than a tenth of a model. The objective therefore acts on
+ensemble composition principally as a threshold --- it decides whether
+combination happens at all --- and only secondarily as a dial on concentration.
+
+\begin{table}[htbp]
+\centering
+\caption{The shortlist carried into the origin extension. Scores are MASE on the
+year-on-year basis over the twelve-month window, Block~A (six origins). Rank is the
+position among eligible candidates after the screen and after the quantile family is
+collapsed to one entry. Collapse is the share of Block~A runs in which a single model
+receives a weight of at least $0.90$; $\bar{N}_{\mathrm{eff}}$ is the mean effective
+number of models in the ensemble.}
+\label{tab:shortlist}
+\begin{threeparttable}\small
+\begin{tabular}{@{}l c l l r r r r@{}}
+\toprule
+Index & Slot & Code & Objective & MASE & Rank & Collapse (\%) & $\bar{N}_{\mathrm{eff}}$ \\
+\midrule
+HCPI & 1 & EM11 & DTW & 0.0950 & 1 & 0 & 3.78 \\
+ & 2 & EM10 & MQL & 0.1022 & 2 & 17 & 2.24 \\
+ & 3 & EM12 & Soft-DTW & 0.1140 & 3 & 0 & 2.99 \\
+\addlinespace[2pt]
+FCPI & 1 & EM10 & MQL & 0.0754 & 1 & 0 & 2.43 \\
+ & 2 & EM3 & MAPE & 0.1049 & 2 & 0 & 2.22 \\
+ & 3 & EM1 & MAE & 0.1076 & 6 & 0 & 2.17 \\
+\addlinespace[2pt]
+CCPI & 1 & EM11 & DTW & 0.1367 & 1 & 0 & 3.00 \\
+ & 2 & EM12 & Soft-DTW & 0.1460 & 2 & 0 & 3.12 \\
+ & 3 & EM13 & Wasserstein & 0.1719 & 3 & 0 & 2.81 \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]\footnotesize
+\item TDI (EM14) and TPA (EM17) collapse in every run on all three indices and TDA (EM15) in 50--83~per~cent; all three are ineligible and do not appear. On CCPI the screen is what removes TDA from third place and promotes Wasserstein.
+\item Rows are ordered by rank. The FCPI shortlist is the one case in which the slots below the first are not identified by the data: MAPE (0.1049), WAPE (0.1071), MASE (0.1074), sMAPE (0.1076) and MAE (0.1076) lie within 0.003 of one another, well inside the sampling variation of Table~\ref{tab:precision17}, so the ranking within that cluster carries no information. MAPE and MAE were carried forward from it; WAPE and MASE, which rank between them, were not. The choice among the five was arbitrary rather than rule-based, and the interpretation below treats the second and third FCPI slots accordingly.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+\subsection{The Origin Extension: Evidence Base}
+\label{sec:res-blockB}
+
+Block~B applies the three shortlisted objectives of
+Table~\ref{tab:shortlist} to the eleven remaining admissible origins, from
+2024:04 to 2025:02, giving $3\times3\times11 = 99$ further experiments under
+settings otherwise identical to Block~A. Pooled with the corresponding Block~A
+runs, each of the nine index--objective pairs is then observed at seventeen
+contiguous origins spanning 2024:04 to 2025:08, whose outcomes run from
+2024:05 to 2026:08.
+
+Three comparisons are available and they are not interchangeable. The six
+Block~A origins are a \emph{subset} of the seventeen, so a comparison of
+Block~A against the pooled sample is not informative and is never made below.
+The eleven Block~B origins are disjoint from the six on which the shortlist was
+chosen, so the comparison of Block~A against Block~B is a genuine out-of-sample
+test of that choice, and it is the comparison reported in
+Table~\ref{tab:stability}. The pooled seventeen-origin figure is the preferred
+point estimate and is used everywhere thereafter.
+
+One limitation should be stated before the results rather than after them. The
+seventeen origins are one month apart and each carries a twelve-month horizon,
+so consecutive forecast paths overlap in eleven of their twelve months. The
+seventeen observations are therefore worth roughly two to three independent
+twelve-month blocks, which is the binding constraint on every test in
+Section~\ref{sec:res-dm}.
+
+\subsection{Out-of-Sample Stability of the Ranking}
+\label{sec:res-stability}
+
+\begin{table}[htbp]\centering
+\caption{Out-of-sample behaviour of the shortlist. MASE on the year-on-year basis over the twelve-month window. Block~A is the six origins on which the shortlist was selected; Block~B is the eleven origins that follow from the extension and were not used in the selection; the pooled column covers all seventeen.}
+\label{tab:stability}
+\begin{threeparttable}\small
+\begin{tabular}{@{}l l l r r r c c@{}}
+\toprule
+ & & & \multicolumn{3}{c}{MASE (year-on-year)} & \multicolumn{2}{c}{Rank within index} \\
+\cmidrule(lr){4-6}\cmidrule(lr){7-8}
+Index & Code & Objective & Block~A (6) & Block~B (11) & Pooled (17) & Block~A & Block~B \\
+\midrule
+HCPI & EM11 & DTW & 0.0950 & 0.1048 & 0.1013 & 1 & 1 \\
+ & EM10 & MQL & 0.1022 & 0.1164 & 0.1114 & 2 & 3 \\
+ & EM12 & Soft-DTW & 0.1140 & 0.1100 & 0.1114 & 3 & 2 \\
+\addlinespace[2pt]
+FCPI & EM10 & MQL & 0.0754 & 0.0890 & 0.0842 & 1 & 1 \\
+ & EM3 & MAPE & 0.1049 & 0.1247 & 0.1177 & 2 & 3 \\
+ & EM1 & MAE & 0.1076 & 0.1217 & 0.1167 & 3 & 2 \\
+\addlinespace[2pt]
+CCPI & EM11 & DTW & 0.1367 & 0.1339 & 0.1349 & 1 & 3 \\
+ & EM12 & Soft-DTW & 0.1460 & 0.1156 & 0.1263 & 2 & 1 \\
+ & EM13 & Wasserstein & 0.1719 & 0.1260 & 0.1422 & 3 & 2 \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}
+\end{threeparttable}
+\end{table}
+
+\subsection{The Assessment Panel on Seventeen Origins}
+\label{sec:res-panel17}
+
+Table~\ref{tab:panel17} repeats the panel of
+Table~\ref{tab:panel_top3} on the pooled seventeen origins. The instrument,
+the basis and the four ranking windows are unchanged; only the evidence base
+and the candidate set differ, since the comparison is now between the three
+shortlisted objectives rather than all seventeen. Scores are therefore
+comparable with Table~\ref{tab:panel_top3} cell by cell, but the ordinal
+positions are not: a first place here is first of three.
+
+\begin{table}[htbp]\centering
+\caption{Pooled seventeen origins, year-on-year basis: the three shortlisted fitting objectives of each index ordered within every assessment angle and ranking window, with the window score in parentheses. MASE and SQL are means over $h=1,\dots,W$; Soft-DTW and TPA are cumulative values at $W$. Lower is better except for TPA.}
+\label{tab:panel17}
+\begin{threeparttable}\scriptsize\setlength{\tabcolsep}{3pt}\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}l l >{\raggedright\arraybackslash}p{0.185\textwidth}>{\raggedright\arraybackslash}p{0.185\textwidth}>{\raggedright\arraybackslash}p{0.185\textwidth}>{\raggedright\arraybackslash}p{0.185\textwidth}@{}}
+\toprule
+Angle & Index & 1-month & 3-month & 6-month & 12-month \\
+\midrule
+\multirow{3}{*}{\shortstack[l]{Point\\(MASE)}}
+ & HCPI & MQL (0.0697), DTW (0.0727), Soft-DTW (0.0979) & DTW (0.0808), MQL (0.0825), Soft-DTW (0.1083) & DTW (0.0900), MQL (0.0920), Soft-DTW (0.1158) & DTW (0.1013), MQL (0.1114), Soft-DTW (0.1114) \\
+ & FCPI & MQL (0.0792), MAPE (0.0835), MAE (0.0887) & MQL (0.0882), MAPE (0.1005), MAE (0.1044) & MQL (0.0893), MAPE (0.1088), MAE (0.1100) & MQL (0.0842), MAE (0.1167), MAPE (0.1177) \\
+ & CCPI & DTW (0.0610), Soft-DTW (0.0629), Wasserstein (0.0741) & DTW (0.0789), Soft-DTW (0.0823), Wasserstein (0.0901) & Soft-DTW (0.0921), DTW (0.0926), Wasserstein (0.1038) & Soft-DTW (0.1263), DTW (0.1349), Wasserstein (0.1422) \\
+\addlinespace
+\multirow{3}{*}{\shortstack[l]{Probabilistic\\(SQL)}}
+ & HCPI & MQL (0.0536), DTW (0.0571), Soft-DTW (0.0715) & MQL (0.0642), DTW (0.0665), Soft-DTW (0.0796) & MQL (0.0751), DTW (0.0775), Soft-DTW (0.0906) & MQL (0.0942), DTW (0.0974), Soft-DTW (0.1043) \\
+ & FCPI & MQL (0.0628), MAPE (0.0689), MAE (0.0714) & MQL (0.0706), MAPE (0.0791), MAE (0.0814) & MQL (0.0753), MAPE (0.0896), MAE (0.0901) & MQL (0.0822), MAE (0.1039), MAPE (0.1040) \\
+ & CCPI & Soft-DTW (0.0545), DTW (0.0567), Wasserstein (0.0659) & DTW (0.0695), Soft-DTW (0.0699), Wasserstein (0.0797) & Soft-DTW (0.0827), DTW (0.0838), Wasserstein (0.0932) & Soft-DTW (0.1117), DTW (0.1152), Wasserstein (0.1224) \\
+\addlinespace
+\multirow{3}{*}{\shortstack[l]{Temporal\\(Soft-DTW)}}
+ & HCPI & MQL (1.3682), DTW (1.8964), Soft-DTW (3.7046) & MQL (4.6091), DTW (5.1973), Soft-DTW (10.8144) & DTW (6.4837), MQL (7.0597), Soft-DTW (19.2861) & DTW (17.6164), MQL (21.1043), Soft-DTW (22.3689) \\
+ & FCPI & MQL (3.6964), MAPE (4.8573), MAE (5.2734) & MQL (11.3674), MAPE (15.3932), MAE (16.5872) & MQL (17.2592), MAE (28.5869), MAPE (29.7521) & MQL (24.2215), MAE (61.0645), MAPE (61.6413) \\
+ & CCPI & Soft-DTW (1.0734), DTW (1.1298), Wasserstein (1.5599) & DTW (3.6815), Soft-DTW (3.9899), Wasserstein (5.1865) & Soft-DTW (4.8955), DTW (6.1582), Wasserstein (7.3122) & Soft-DTW (33.4061), DTW (38.7705), Wasserstein (43.7982) \\
+\addlinespace
+\multirow{3}{*}{\shortstack[l]{Directional\\(TPA)}}
+ & HCPI & \textit{undefined} & Soft-DTW (0.7778), DTW (0.6667), MQL (0.6667) & MQL (0.9375), Soft-DTW (0.9375), DTW (0.9062) & Soft-DTW (0.9588), DTW (0.9294), MQL (0.9196) \\
+ & FCPI & \textit{undefined} & MAE (1.0000), MAPE (1.0000), MQL (0.9231) & MQL, MAE, MAPE (all 0.9706) & MAE (0.9667), MAPE (0.9667), MQL (0.9235) \\
+ & CCPI & \textit{undefined} & Wasserstein (0.8750), DTW (0.7500), Soft-DTW (0.7500) & Wasserstein (0.8788), DTW (0.8333), Soft-DTW (0.8333) & Wasserstein (0.9314), DTW (0.9098), Soft-DTW (0.8804) \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]\scriptsize
+\item TPA is defined only at origins whose realised path contains a turning point inside the window, and the cells above average over those origins alone. The number of contributing origins, out of seventeen, is: HCPI 0, 9, 16, 17; FCPI 0, 13, 17, 17; CCPI 0, 8, 11, 17, at the one-, three-, six- and twelve-month windows respectively. The one-month window is empty on every index, as it must be. The larger sample does not overturn the diagnosis of Section~\ref{sec:res-direction}; it explains it. Where Block~A reported the directional angle as degenerate at short windows, the cause is visible here: of the six Block~A origins only four on HCPI, five on FCPI and \emph{none} on CCPI contained a three-month turning point, and only one CCPI origin contained a six-month one. The near-universal ties in Table~\ref{tab:panel_top3} were computed on those few origins. Short-window TPA figures, in either table, carry far less evidence than the column heading implies and should not be used for selection.
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
+\subsection{Precision of the Pooled Estimates}
+\label{sec:res-precision}
+
+With seventeen origins the dispersion of each estimate can be reported
+rather than inferred. Table~\ref{tab:precision17} gives the distribution of the
+run-level twelve-month MASE across origins. The intervals are wide relative to
+the gaps in Table~\ref{tab:stability}: a half-width of $0.014$ to $0.035$ against
+differences between objectives of $0.010$ to $0.034$.
+
+These are marginal intervals and they are not a test of the difference between
+two objectives, which is a paired quantity: the same origins and the same
+horizons enter both, and consecutive origins overlap in eleven of twelve
+months. Differences between objectives are therefore tested directly, on the
+paired absolute year-on-year errors over all seventeen origins and twelve
+horizons ($n = 204$), with the same Harvey-corrected Diebold--Mariano statistic
+and Bartlett kernel used in Section~\ref{sec:res-dm}. On FCPI the leading
+objective is separated from both of its rivals: MQL improves on MAE by $0.651$
+percentage points ($p = 0.005$) and on MAPE by $0.670$ ($p = 0.006$). On the
+other two indices it is not. The HCPI leader improves on the runner-up by
+$0.151$ percentage points ($p = 0.209$) and the CCPI leader by $0.112$
+($p = 0.250$); neither difference is distinguishable from zero, so the CCPI
+reordering of Table~\ref{tab:stability} should be read as a failure to
+distinguish rather than as a reversal of merit.
+
+\begin{table}[htbp]\centering
+\caption{Dispersion of the twelve-month MASE across the seventeen origins, year-on-year basis. The interval is a marginal normal approximation, $1.96\,s/\sqrt{17}$, and is indicative only: consecutive origins overlap in eleven of twelve months, and the interval must not be used to compare two objectives, for which the paired tests reported in the text are the appropriate instrument.}
+\label{tab:precision17}
+\begin{threeparttable}\small
+\begin{tabular}{@{}l l l r r r r r@{}}
+\toprule
+Index & Code & Objective & Mean & s.d. & $\pm$95\% & Min & Max \\
+\midrule
+HCPI & EM11 & DTW & 0.1013 & 0.0473 & 0.0225 & 0.0228 & 0.1738 \\
+ & EM10 & MQL & 0.1114 & 0.0454 & 0.0216 & 0.0286 & 0.1838 \\
+ & EM12 & Soft-DTW & 0.1114 & 0.0597 & 0.0284 & 0.0297 & 0.2342 \\
+\addlinespace[2pt]
+FCPI & EM10 & MQL & 0.0842 & 0.0290 & 0.0138 & 0.0399 & 0.1475 \\
+ & EM3 & MAPE & 0.1177 & 0.0545 & 0.0259 & 0.0526 & 0.2130 \\
+ & EM1 & MAE & 0.1167 & 0.0517 & 0.0246 & 0.0519 & 0.2130 \\
+\addlinespace[2pt]
+CCPI & EM11 & DTW & 0.1349 & 0.0726 & 0.0345 & 0.0278 & 0.2704 \\
+ & EM12 & Soft-DTW & 0.1263 & 0.0692 & 0.0329 & 0.0421 & 0.2722 \\
+ & EM13 & Wasserstein & 0.1422 & 0.0697 & 0.0332 & 0.0487 & 0.2597 \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}\end{threeparttable}\end{table}
+
+\subsection{Comparison with the Benchmarks}
+\label{sec:res-benchmarks17}
+
+Table~\ref{tab:bench17} places the shortlisted ensembles against the naive
+benchmarks of Section~\ref{sec:method-benchmarks} over the same seventeen
+origins. This table alone departs from the MASE convention and reports the mean
+absolute year-on-year error in percentage points, because the quantity a policy
+reader needs is the size of the miss in the units of the target, and because
+the scaling in MASE is origin-specific and so obscures the comparison across
+indices. The ordering within each index is identical under either unit.
+
+The result is uncomfortable and should be stated plainly. Only FCPI shows
+material skill against a random walk. HCPI is a tie and CCPI is a loss: the
+best available ensemble on CCPI is nearly ten~per~cent worse than repeating the
+last observed index level. The random walk is also the strongest of the four
+benchmarks on all three indices, ahead of the seasonal naive and drift variants
+that a monthly inflation exercise would more commonly adopt.
+
+The win counts qualify this in one direction. Every shortlisted configuration
+beats the random walk at between nine and eleven of the seventeen origins, so
+the ensembles are more often right than wrong; where they lose, they lose by
+more. That asymmetry, rather than a uniform inferiority, is what produces the
+negative mean skill on CCPI.
+
+\begin{table}[htbp]\centering
+\caption{Mean absolute year-on-year error in percentage points over the seventeen pooled origins. Skill is $1-\text{model}/\text{RW}$; wins counts the origins at which the ensemble's mean absolute error is below that of the random walk.}
+\label{tab:bench17}
+\begin{threeparttable}\small
+\begin{tabular}{@{}l l l r r r r r r r@{}}
+\toprule
+ & & & & \multicolumn{4}{c}{Benchmarks} & & \\
+\cmidrule(lr){5-8}
+Index & Code & Objective & Model & RW & Drift & A--O & S.\,naive & Skill (\%) & Wins/17 \\
+\midrule
+HCPI & EM11 & DTW & 1.514 & 1.552 & 2.199 & 2.920 & 2.111 & +2.5 & 10 \\
+ & EM10 & MQL & 1.665 & 1.552 & 2.199 & 2.920 & 2.111 & -7.2 & 9 \\
+ & EM12 & Soft-DTW & 1.664 & 1.552 & 2.199 & 2.920 & 2.111 & -7.2 & 10 \\
+\addlinespace[2pt]
+FCPI & EM10 & MQL & 1.681 & 2.180 & 2.252 & 2.544 & 2.660 & +22.9 & 10 \\
+ & EM3 & MAPE & 2.351 & 2.180 & 2.252 & 2.544 & 2.660 & -7.9 & 11 \\
+ & EM1 & MAE & 2.332 & 2.180 & 2.252 & 2.544 & 2.660 & -7.0 & 11 \\
+\addlinespace[2pt]
+CCPI & EM11 & DTW & 1.801 & 1.539 & 2.292 & 2.966 & 2.098 & -17.0 & 10 \\
+ & EM12 & Soft-DTW & 1.689 & 1.539 & 2.292 & 2.966 & 2.098 & -9.8 & 9 \\
+ & EM13 & Wasserstein & 1.903 & 1.539 & 2.292 & 2.966 & 2.098 & -23.7 & 5 \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}
+\begin{tablenotes}[flushleft]\footnotesize
+\item The ARIMA benchmark of Section~\ref{sec:method-benchmarks} is absent from this table: the executed baseline block covers HCPI only, so a like-for-like comparison across the three indices over the common seventeen origins is not available.
+\end{tablenotes}\end{threeparttable}\end{table}
+
+\subsection{Formal Tests of Equal Predictive Accuracy}
+\label{sec:res-dm}
+
+Table~\ref{tab:dm17} reports Diebold--Mariano tests of equal absolute
+year-on-year error against the random walk, with the Harvey small-sample
+correction and a Bartlett-kernel Newey--West variance at lag $h-1$
+\citep{diebold1995,harvey1997,neweywest1987}. A positive statistic indicates
+that the ensemble is the worse of the two. Eight of the thirty-six tests reject
+at the five~per~cent level before any adjustment, and their direction is
+uniform: \emph{every one of the eight records the ensemble as worse than the
+random walk}, and every one falls at a horizon of six months or less. No
+comparison at any horizon shows the ensemble significantly better. Five of the
+eight are at one month --- all three objectives on HCPI and two of the three on
+CCPI.
+
+Multiplicity has to be taken seriously here, because thirty-six tests at the
+five~per~cent level would produce about 1.8 rejections by chance alone. Under a
+Holm correction across the family of thirty-six, \emph{none} of the eight
+survives; the smallest adjusted $p$-value is $0.083$. The evidence that the
+ensemble is beaten at short horizons is therefore consistent and one-directional
+but not individually decisive, which is the reading
+Section~\ref{sec:method-benchmarks} anticipated. The failures to reject should
+likewise not be read as evidence of equality: with roughly 2.3 non-overlapping
+horizons (Section~\ref{sec:res-blockB}) these tests have very little power in
+either direction, and the economically meaningful comparison remains the
+percentage-point one in Table~\ref{tab:bench17}.
+
+\begin{table}[htbp]\centering
+\caption{Diebold--Mariano statistics against the random walk on the seventeen pooled origins, year-on-year absolute error, with the Harvey correction and a Bartlett-kernel Newey--West variance at lag $h-1$. Positive values favour the random walk. $^{*}$ denotes rejection at the five~per~cent level before adjustment for multiple testing; no entry survives a Holm correction across the thirty-six tests.}
+\label{tab:dm17}
+\begin{threeparttable}\scriptsize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}l l l rr rr rr rr@{}}
+\toprule
+ & & & \multicolumn{2}{c}{$h=1$} & \multicolumn{2}{c}{$h=3$} & \multicolumn{2}{c}{$h=6$} & \multicolumn{2}{c}{$h=12$} \\
+\cmidrule(lr){4-5}\cmidrule(lr){6-7}\cmidrule(lr){8-9}\cmidrule(lr){10-11}
+Index & Code & Objective & DM & $p$ & DM & $p$ & DM & $p$ & DM & $p$ \\
+\midrule
+HCPI & EM11 & DTW & 2.45$^{*}$ & 0.026 & 1.55 & 0.140 & 0.28 & 0.786 & $-$0.58 & 0.571 \\
+ & EM10 & MQL & 3.62$^{*}$ & 0.002 & 1.60 & 0.130 & 0.43 & 0.674 & $-$0.25 & 0.809 \\
+ & EM12 & Soft-DTW & 2.73$^{*}$ & 0.015 & 1.71 & 0.106 & 0.76 & 0.459 & $-$0.80 & 0.437 \\
+\addlinespace[2pt]
+FCPI & EM10 & MQL & 1.55 & 0.141 & 0.02 & 0.987 & $-$0.57 & 0.578 & $-$1.40 & 0.179 \\
+ & EM3 & MAPE & 1.53 & 0.144 & 1.13 & 0.274 & 0.65 & 0.522 & $-$0.09 & 0.930 \\
+ & EM1 & MAE & 1.79 & 0.093 & 1.17 & 0.257 & 0.54 & 0.600 & $-$0.08 & 0.939 \\
+\addlinespace[2pt]
+CCPI & EM11 & DTW & 1.78 & 0.094 & 1.84 & 0.084 & 1.04 & 0.312 & 0.31 & 0.758 \\
+ & EM12 & Soft-DTW & 2.33$^{*}$ & 0.033 & 2.40$^{*}$ & 0.029 & 1.29 & 0.216 & $-$0.00 & 0.999 \\
+ & EM13 & Wasserstein & 2.48$^{*}$ & 0.025 & 2.96$^{*}$ & 0.009 & 3.50$^{*}$ & 0.003 & 0.48 & 0.640 \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}
+\end{threeparttable}\end{table}
+
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{When to Use the Ensemble and When to Use a Random Walk}
+
+The results do not support a single recommendation for all three indices and
+all horizons, and the pattern of where they do and do not support one is
+itself the practical finding. Three statements can be made with the evidence
+assembled here.
+
+At the one-month horizon the random walk should be the working forecast for all
+three indices. It is the strongest of the four naive benchmarks on every index,
+no ensemble configuration beats it significantly at that horizon, and five of
+the eight unadjusted rejections in Table~\ref{tab:dm17} record the ensemble as
+worse there. For a monthly price index the last observed level is close to a
+sufficient statistic one month out, and an automated framework spends a great
+deal of computation to arrive at something slightly worse.
+
+At the twelve-month horizon the ensemble is worth running on food inflation,
+where it improves on the random walk by 22.9~per~cent, and the improvement is
+large enough to matter for a component that carries roughly a third of the
+headline basket. On the headline index the gain is 2.5~per~cent, which is
+within the noise of seventeen overlapping origins and should not be presented
+as skill. On the Colombo index the framework is worse than the random walk and
+should not be used in its present form.
+
+Between those two horizons the evidence is genuinely uninformative rather than
+negative. With roughly 2.3 non-overlapping horizons no test at three or six
+months has the power to separate the candidates, and the honest statement to a
+policy committee is that the framework has not been shown to help or to hurt at
+those horizons.
+
+\subsection{Two Readings of the CCPI Deficit}
+
+The framework's clearest failure --- a skill deficit of 9.8~per~cent against the
+random walk on the Colombo Consumer Price Index --- admits two explanations that
+the present design cannot separate, and both are worth stating because each
+points at a different fix.
+
+The first is the validation window. Ensemble weights are chosen on the final 24
+months of each training window, and for every admissible origin those months lie
+in the tail of the 2022--24 episode, when year-on-year inflation was falling
+from above 60~per~cent. Weights selected to minimise error in that period are
+then applied, without refitting, to a horizon in which inflation is low and
+close to flat, where the last observed level is a strong forecast. That is a
+coherent account of why an automated ensemble would be beaten by a random walk
+precisely at short horizons, and it predicts that a rolling or shortened
+validation block, or periodic re-weighting, would narrow the gap. It is an
+account and not a result: no paired comparison with \texttt{refit\_full}
+enabled, and no alternative validation block, was run.
+
+The second is the fitting basis. The objectives that lead on CCPI --- DTW and
+Soft-DTW --- are computed on the year-on-year transform, which is also the
+representation on which every forecast is assessed, while the point and quantile
+objectives are computed on the index level
+(Section~\ref{sec:method-scope}). An objective that minimises deviations in the
+rate of change is aligned with the evaluation loss in a way that one minimising
+level error is not, and the CCPI ranking is the place where that alignment
+coincides most exactly with the observed ordering. Against this, the weight
+diagnostic of Section~\ref{sec:res-point} found no simple mechanism behind
+DTW's short-horizon lead, and the design varies basis and construction together.
+A control in which each objective is run on both representations would separate
+them; it was not performed.
+
+\subsection{A Horizon-Dependent Combination}
+
+The single clearest design implication is that one configuration should not be
+used across the whole path. The objective that produces the best one-month
+forecast is not the one that produces the best twelve-month forecast on either
+of the two indices where the ranking is identifiable, and on FCPI the leading
+objective differs at every one of the four ranking windows. A framework that
+selects a single objective on a twelve-month criterion, the usual practice,
+therefore ships a nowcast chosen by a criterion that does not describe the
+nowcast.
+
+Two arrangements follow directly and can be evaluated within the present
+design. The first is to fit separate ensembles under separate objectives for
+short and long segments of the path and to splice them, which requires only
+that the selection rule be applied per window rather than once. The second is
+to leave the short segment to the random walk and to use the ensemble only
+beyond the horizon at which it stops losing, which on this evidence is around
+six months. Neither is tested here; both are cheap, because the base models are
+identical across objectives (Section~\ref{sec:method-design}) and only the
+weighting changes.
+
+\subsection{Relevance to the Policy Target}
+
+The three indices are not interchangeable for policy purposes. The Colombo
+Consumer Price Index is the measure against which the inflation target under
+the Central Bank of Sri Lanka Act No.~16 of 2023 is assessed, so it is the
+series on which forecast performance matters most, and it is the series on
+which this framework performs worst: negative skill against the random walk, no
+identifiable preferred objective, and the one index whose Block~A ranking
+reversed out of sample. The two indices on which the framework does better are
+the national headline index and its food component, which inform the
+interpretation of price pressure but are not the target.
+
+That ordering should temper any operational reading of these results. A
+framework that helps on food inflation and fails on the target measure is not
+yet a forecasting system for monetary policy; it is, at most, a component
+that might inform the assessment of food-driven pressure. The limitations of
+Section~\ref{sec:method-scope} bear directly on this: the models never see the
+most recent two years of each window, the weights are chosen on validation
+periods that lie inside the 2022--24 crisis, and no exogenous information
+enters, although the 2024 disinflation was shaped by administered-price
+decisions whose timing was known in advance. Addressing those three would be
+the natural route to a version of this framework that could be used on the
+target index.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper set out to establish whether an automated, interpretable ensemble
+framework can improve on conventional benchmarks for forecasting Sri Lankan
+inflation, and to determine how such a framework should be configured and
+judged. Four hundred and five experiments were executed on a fixed
+124-month rolling window across three price indices, seventeen candidate
+fitting objectives and seventeen forecast origins spanning 2024:04 to 2025:08,
+with every forecast assessed on the year-on-year transform through a single
+four-metric panel applied uniformly. The answer that emerges is qualified, and the
+qualifications are as much a part of the contribution as the headline.
+
+The clearest finding concerns the fitting objective. The metric offered to the
+ensemble selection procedure is not a tuning detail. Holding the index, the
+origins and every other setting fixed, the spread between the best and worst
+shortlisted objective reaches 0.034 in MASE terms on FCPI, more than three
+times the spread on HCPI, and on that index the paired difference between the
+leading objective and its nearest rival is 0.65 percentage points of
+year-on-year error and statistically significant. The design does not vary the
+model class, so no comparison with that choice is made. Two
+structural regularities within that spread are worth recording. Alignment-based
+objectives, which tolerate phase error, are the most accurate at short
+horizons, leading eight of the nine defined one-month cells in Block~A;
+quantile-based objectives, which penalise level error symmetrically across the
+predictive distribution, overtake them in the second half of the twelve-month
+path on the headline and food indices. That contrast is not a clean one. The
+alignment objectives are computed on the year-on-year transform, which is also
+the representation on which every forecast is assessed, whereas the point and
+quantile objectives are computed on the index level, so part of the
+short-horizon advantage may reflect the match between the fitting and
+assessment bases rather than the shape-based construction of the objective.
+The present design cannot separate the two. And the three quantile objectives are
+empirically indistinguishable from one another, selecting near-identical
+ensembles and separated by less than one thousandth in window score, so they
+should be treated as a single candidate rather than three. The objective also
+decides whether the framework combines forecasts at all: three of the seventeen
+collapse onto a single model, two of them in every run, and among the rest the
+mean effective ensemble size ranges from 2.2 to 3.8 models with everything else
+fixed (Table~\ref{tab:shortlist}).
+
+The second finding is that the ranking of objectives depends on the horizon
+over which the forecast is judged, and does so systematically rather than
+randomly. On the food index the leading objective differs at every one of the
+four ranking windows. A single twelve-month ranking, the convention in much of
+the forecasting literature, would have recommended for the one-month nowcast on
+that index an objective ranked sixth of seventeen at that horizon. The evaluation window is
+therefore not a reporting choice but part of the result, and should be declared
+as such.
+
+The third finding is the one a policy institution will care about most, and it
+is negative. Over seventeen common origins the framework delivers material
+skill against a random walk on one index of three: 22.9~per~cent on FCPI,
+against 2.5~per~cent on HCPI and $-9.8$~per~cent on CCPI. Diebold--Mariano
+tests reject equal predictive accuracy in eight of thirty-six cases before
+adjustment; every rejection records the ensemble as \emph{worse} than the
+random walk and every one falls at a horizon of six months or less. No
+comparison at any horizon finds the ensemble significantly better, and under a
+Holm correction across the thirty-six tests none of the eight survives, so the
+pattern is consistent in direction but weak in individual significance. The
+random walk is also the strongest of the four naive benchmarks on all three
+indices. On the evidence assembled here, an automated ensemble adds nothing at
+the nowcast horizon for Sri Lankan inflation, and the only index on which it
+shows material skill at any horizon is food.
+
+The fourth finding is methodological and arises from the origin extension. A
+selection made on six origins did not survive on eleven held-out ones for the
+Colombo index: the objective that led every discriminating cell in Block~A on CCPI
+finished last of three out of sample. Because the three CCPI objectives lie
+within 0.016 of one another while the sampling interval is $\pm 0.033$, the
+correct inference is not that a different objective should be preferred but
+that this index does not identify a preferred objective at this sample size.
+Two further symptoms point the same way. Every headline and food score
+deteriorates from the selection sample to the held-out sample, which indicates
+that the six most recent origins were the most favourable in the admissible
+range. And the directional metric proves
+to be supported by far fewer observations than a horizon column suggests: of
+the six Block~A origins, none on CCPI and only four on HCPI contained a
+three-month turning point in the realised path. Short-window directional
+figures should not be used for selection, here or elsewhere.
+
+Taken together these results support a narrower claim than the one the
+framework was built to test, but a more useful one. The contribution is not
+that automated ensembles forecast Sri Lankan inflation well; on two indices of
+three they do not beat a naive rule. It is that a disciplined benchmarking
+framework --- a fixed window, a declared assessment panel, an eligibility
+screen against degenerate ensembles, multiple evaluation horizons, and a
+held-out extension of the origin set --- is capable of detecting that, and of
+identifying which design choices do and do not matter. Applied without those
+safeguards, the same experiments would have supported a confident and
+unfounded recommendation, because the six-origin evidence on CCPI pointed
+firmly at an objective that does not hold up.
+
+Four limitations bound the interpretation. The evaluation sample lies entirely
+within the post-crisis period of 2024--2026, so the framework has not been
+tested through an inflationary acceleration or a structural break; every
+124-month training window ends after the 2022 crisis and none of them can be
+placed inside an earlier episode. The seventeen origins are one month apart and
+each carries a twelve-month horizon, so consecutive paths overlap in eleven of
+twelve months and the effective sample is worth two to three independent
+blocks, which is the binding constraint on every test reported. The full
+seventeen-objective comparison rests on six origins only; the extension covers
+three objectives per index. And the ARIMA benchmark was executed for the
+headline index alone, so the model-based comparison is incomplete for FCPI and
+CCPI.
+
+Each of these points to a direction for further work, and the priority ordering
+is clear. Extending the origin set backwards to cover the 2021--2023
+acceleration would test whether the alignment advantage at short horizons is a
+property of disinflation or of the method, and is the single most informative
+extension available. Completing the ARIMA and short-window baseline arms for
+FCPI and CCPI would close the benchmark comparison. Running the
+full objective set at the extended origins would establish whether the
+horizon-dependent ranking reported here is stable. Finally, the finding that a
+random walk is difficult to beat at one month, while an ensemble helps at
+twelve, suggests a horizon-dependent combination rather than a single
+configuration for all horizons --- a design the present framework can evaluate
+without modification.
+
+
+
+% ===========================================================================
+%  Appendix A -- Block A ranking tables, year-on-year basis
+%  Generated from Results/Analysis/blockA_YoY_4angle_top5_tables.csv
+%  Requires: booktabs, threeparttable, array (standard on Overleaf).
+% ===========================================================================
+
+
+
+
+\clearpage
+
+\appendix
+\section{Block~A Ranking Tables on the Year-on-Year Basis}
+\label{app:blockA-tables}
+
+This appendix reports, in full, the rankings summarised in
+Table~\ref{tab:panel_top3}. Each table covers one assessment angle and one
+index, and is divided into four panels corresponding to the ranking windows
+$W \in \{1,3,6,12\}$ defined in Section~\ref{sec:res-protocol}. Within each
+panel the five best-performing fitting objectives are listed in order, with
+their scores at every horizon $h=1,\dots,W$ and the window score in the final
+column. The directional angle is not tabulated here: TPA is undefined at the
+one-month window on every index and takes two or three distinct values at the
+others, so its tables carry no ordering beyond what
+Table~\ref{tab:panel_top3} and Section~\ref{sec:res-direction} already
+report.
+
+All scores are computed on the year-on-year transform~\eqref{eq:yoy} of the
+forecast index against the realised year-on-year rate, averaged over the six
+Block~A origins. The rows are the seventeen candidate \emph{fitting}
+objectives of Table~\ref{tab:metrics}; the metric named in each caption is the
+\emph{assessment} instrument by which they are ordered. For MASE and SQL, which
+are defined horizon by horizon, the window score is the mean over
+$h=1,\dots,W$; for Soft-DTW and TPA, which accumulate along the alignment, it
+is the cumulative value at $W$ and must not be averaged. Lower scores are
+better for MASE, SQL and Soft-DTW; higher scores are better for TPA. Rankings
+are raw: the eligibility screen of Section~\ref{sec:method-selection} is not
+applied here, so the degenerate objectives remain visible.
+
+\subsection{Point accuracy: Mean Absolute Scaled Error (EM5)}
+\label{app:blockA-point}
+
+\begin{table}[htbp]
+\centering
+\caption{Block~A, HCPI: the five leading fitting objectives under MASE (EM5) on the year-on-year basis, at each ranking window. Lower is better.}
+\label{tab:appA-point-hcpi}
+\begin{threeparttable}
+\scriptsize
+\setlength{\tabcolsep}{1.8pt}
+\begin{tabular}{@{}r l l *{12}{r} r@{}}
+\toprule
+Rank & Code & Objective & $M_{1}$ & $M_{2}$ & $M_{3}$ & $M_{4}$ & $M_{5}$ & $M_{6}$ & $M_{7}$ & $M_{8}$ & $M_{9}$ & $M_{10}$ & $M_{11}$ & $M_{12}$ & Average \\
+\midrule
+\multicolumn{16}{@{}l}{\textit{Panel A: 1-month window (value at $M_1$)}} \\[1pt]
+1 & EM11 & DTW & 0.0390 &  &  &  &  &  &  &  &  &  &  &  & 0.0390 \\
+2 & EM10 & MQL & 0.0544 &  &  &  &  &  &  &  &  &  &  &  & 0.0544 \\
+3 & EM8 & WQL & 0.0546 &  &  &  &  &  &  &  &  &  &  &  & 0.0546 \\
+4 & EM9 & SQL & 0.0550 &  &  &  &  &  &  &  &  &  &  &  & 0.0550 \\
+5 & EM15 & TDA & 0.0603 &  &  &  &  &  &  &  &  &  &  &  & 0.0603 \\
+\addlinespace[2pt]
+\multicolumn{16}{@{}l}{\textit{Panel B: 3-month window (mean of $M_1$--$M_{3}$)}} \\[1pt]
+1 & EM11 & DTW & 0.0390 & 0.0550 & 0.0603 &  &  &  &  &  &  &  &  &  & 0.0514 \\
+2 & EM15 & TDA & 0.0603 & 0.0573 & 0.0536 &  &  &  &  &  &  &  &  &  & 0.0571 \\
+3 & EM10 & MQL & 0.0544 & 0.0551 & 0.0653 &  &  &  &  &  &  &  &  &  & 0.0583 \\
+4 & EM8 & WQL & 0.0546 & 0.0553 & 0.0653 &  &  &  &  &  &  &  &  &  & 0.0584 \\
+5 & EM9 & SQL & 0.0550 & 0.0562 & 0.0671 &  &  &  &  &  &  &  &  &  & 0.0594 \\
+\addlinespace[2pt]
+\multicolumn{16}{@{}l}{\textit{Panel C: 6-month window (mean of $M_1$--$M_{6}$)}} \\[1pt]
+1 & EM10 & MQL & 0.0544 & 0.0551 & 0.0653 & 0.0541 & 0.0426 & 0.0389 &  &  &  &  &  &  & 0.0517 \\
+2 & EM8 & WQL & 0.0546 & 0.0553 & 0.0653 & 0.0547 & 0.0435 & 0.0386 &  &  &  &  &  &  & 0.0520 \\
+3 & EM9 & SQL & 0.0550 & 0.0562 & 0.0671 & 0.0585 & 0.0470 & 0.0398 &  &  &  &  &  &  & 0.0539 \\
+4 & EM11 & DTW & 0.0390 & 0.0550 & 0.0603 & 0.0676 & 0.0557 & 0.0528 &  &  &  &  &  &  & 0.0551 \\
+5 & EM15 & TDA & 0.0603 & 0.0573 & 0.0536 & 0.0849 & 0.1034 & 0.1113 &  &  &  &  &  &  & 0.0785 \\
+\addlinespace[2pt]
+\multicolumn{16}{@{}l}{\textit{Panel D: 12-month window (mean of $M_1$--$M_{12}$)}} \\[1pt]
+1 & EM11 & DTW & 0.0390 & 0.0550 & 0.0603 & 0.0676 & 0.0557 & 0.0528 & 0.0618 & 0.0853 & 0.1017 & 0.1306 & 0.1789 & 0.2508 & 0.0950 \\
+2 & EM10 & MQL & 0.0544 & 0.0551 & 0.0653 & 0.0541 & 0.0426 & 0.0389 & 0.0590 & 0.0868 & 0.1021 & 0.1686 & 0.2143 & 0.2847 & 0.1022 \\
+3 & EM8 & WQL & 0.0546 & 0.0553 & 0.0653 & 0.0547 & 0.0435 & 0.0386 & 0.0595 & 0.0880 & 0.1016 & 0.1682 & 0.2137 & 0.2839 & 0.1022 \\
+4 & EM9 & SQL & 0.0550 & 0.0562 & 0.0671 & 0.0585 & 0.0470 & 0.0398 & 0.0628 & 0.0920 & 0.0992 & 0.1652 & 0.2111 & 0.2811 & 0.1029 \\
+5 & EM12 & Soft-DTW & 0.0917 & 0.1024 & 0.1226 & 0.1114 & 0.1009 & 0.1314 & 0.1153 & 0.0955 & 0.0925 & 0.0836 & 0.1278 & 0.1934 & 0.1140 \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}
+\end{threeparttable}
+\end{table}
+
+\medskip
+\noindent The corresponding tables for FCPI and CCPI, and the full tables for
+the probabilistic and temporal angles, follow the same layout and are provided
+in the online supplement together with the machine-readable result files.
+
+\clearpage
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
