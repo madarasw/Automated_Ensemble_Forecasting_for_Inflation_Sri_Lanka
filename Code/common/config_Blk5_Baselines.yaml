@@ -1,0 +1,71 @@
+# Configuration for Blk5_Baselines - the baseline arm of Block 4.1 (short-window skill test)
+#
+# Block 4.1 is paired: every model row B41-M-* in Blk4_ShortWindow has a baseline row
+# BL-M-* here on the IDENTICAL origin and IDENTICAL 72-month window. The baselines have no
+# fitting objective, no AutoGluon and no GPU - they fit in seconds.
+#
+# 3 indices x 69 monthly origins (o1-o69, Jan 2020 - Sep 2025 horizon starts) = 207 runs:
+#     HCPI  BL-M-104 .. BL-M-172
+#     FCPI  BL-M-173 .. BL-M-241
+#     CCPI  BL-M-242 .. BL-M-310
+#
+# FILTER TRAP: there are 441 BL-* rows in the plan and 234 of them belong to OTHER blocks
+# (2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.2) at different windows and frequencies. The runner
+# filters on BOTH block == "4.1" AND exp_id prefix "BL-" and asserts 207 rows; block == "4.1"
+# alone also returns the 207 B41-M-* model rows.
+
+block: "4.1"
+tab_name: "Blk5_Baselines"
+stage: "Stage 4 - baseline arm of the short-window skill test (paired with Blk4_ShortWindow)"
+
+target:
+  index: ["HCPI", "FCPI", "CCPI"]
+  index_name: ["Headline Consumer Price Index", "Food Consumer Price Index", "Colombo Consumer Price Index"]
+  frequencies: ["Monthly"]
+
+evaluation:
+  metric_code: "N/A"
+  metric_name: "Baseline (no fitting objective)"
+  metric_family: "Baseline"
+
+records:
+  point_forecasts: true
+  quantile_forecasts: false
+  weight_distribution: false
+  execution_time: true            # per method, plus total
+
+baselines:
+  # All five returned by Code/common/baselines.run_baselines(past_values, prediction_length,
+  # seasonal_period) with seasonal_period=12. The first three were added 2026-09-25 so the
+  # comparison is not made against seasonal-naive alone - see
+  # Results/Blk11_OBJECTIVE_SELECTION.md section 11.
+  seasonal_period: 12
+  methods:
+    - naive              # random walk: last observed value
+    - drift              # random walk + trailing 12-month drift
+    - atkeson_ohanian    # next 12 months' inflation = last 12 months' (needs 24 past values)
+    - seasonal_naive     # value 12 months earlier
+    - arima              # ARIMA(p,d,q) grid p,d,q in {0,1,2} excl. p=q=0, by AIC; order recorded
+
+experiments:
+  source: "Code/experiments.csv"
+  filter: 'block == "4.1" and exp_id startswith "BL-"'
+  count: 207
+  # Each row supplies: exp_id, index, origin_no, frequency, horizon_start, horizon_end,
+  # n_periods, train_data_start, train_data_end, total_window, regime_of_horizon_start.
+
+output:
+  workbook: "Results/Results_Blk5_Baselines.xlsx"
+  sheet_per_experiment: true      # sheet name = exp_id
+  run_config_json: true           # Results/RunConfigs/Blk5_Baselines/<exp_id>.json
+
+runtime:
+  resume: true                    # skip any exp_id that already has a result sheet
+
+controls:
+  framework: "statsmodels (ARIMA) + numpy - no AutoGluon"
+  training_window: "FIXED ROLLING window of total_window=72 monthly periods, [train_data_start, train_data_end] inclusive, asserted to be exactly 72 rows - IDENTICAL to the paired Blk4_ShortWindow model row. Not the expanding window Tab22_Baselines used."
+  horizon: "12 months, index level (2021=100)"
+  target_transformation: "Index level, 2021=100."
+  data_source_and_vintage: "Data/final_data.csv - see Data/final_data_notes.md"
+  hardware: "CPU only"

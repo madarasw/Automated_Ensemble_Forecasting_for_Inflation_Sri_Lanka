@@ -1,0 +1,68 @@
+# Configuration for Blk11_MetricSearch (Block 1.1 - the metric search)
+#
+# Everything in this file is CONSTANT across all 306 experiments in this block EXCEPT
+# eval_metric, which is the axis under test - that is the whole point of this block, so
+# it is NOT fixed here the way it is in every other tab's config. Each row of
+# Code/experiments.csv supplies its own eval_metric; the runner reads it per-row.
+#
+# 3 indices (HCPI, FCPI, CCPI) x 17 candidate fitting objectives (EM2-EM18) x 6 monthly
+# origins (o64-o69, Apr-Sep 2025 horizon starts) = 306 runs.
+
+block: "1.1"
+tab_name: "Blk11_MetricSearch"
+stage: "Stage 1 - metric search (selects the metric used everywhere EM1 is referenced)"
+
+target:
+  index: ["HCPI", "FCPI", "CCPI"]
+  index_name: ["Headline Consumer Price Index", "Food Consumer Price Index", "Colombo Consumer Price Index"]
+  frequencies: ["Monthly"]
+
+evaluation:
+  metric_code: "VARIES - EM2 through EM18, one axis of this block"
+  metric_name: "VARIES"
+  metric_family: "VARIES"
+  # Every one of the 17 candidates is the ENSEMBLE-FITTING OBJECTIVE for its own subset
+  # of runs. All 17 EM2-EM18 metrics are still computed post-hoc for every run regardless
+  # of which one it was fitted on - the block is unusable without those post-hoc numbers,
+  # since WQL/SQL/MQL require the quantile forecasts and the fitting metric alone can't
+  # answer "how would this run have scored under a different metric".
+
+records:
+  point_forecasts: true
+  quantile_forecasts: true
+  weight_distribution: true
+  execution_time: true
+
+experiments:
+  source: "Code/experiments.csv"
+  filter: 'block == "1.1"'
+  count: 306
+  # Each row supplies: exp_id, index, eval_metric, origin_no, frequency, horizon_start,
+  # horizon_end, n_periods, train_data_start, train_data_end, train_periods,
+  # validation_periods, total_window, pretrained_models, refit_full.
+
+output:
+  workbook: "Results/Results_Blk11_MetricSearch.xlsx"
+  sheet_per_experiment: true      # sheet name = exp_id
+  run_config_json: true           # written beside each result, Results/RunConfigs/Blk11_MetricSearch/<exp_id>.json
+  progress_file: "Results/PROGRESS.md"  # rewritten after every run
+
+runtime:
+  resume: true                    # skip any exp_id that already has a result sheet -
+                                  # a crash/restart must not cost runs that already finished
+
+controls:
+  framework: "AutoGluon-TimeSeries"
+  framework_version: "1.6.3"
+  model_pool: "Fixed, fully enumerated 14-model pool + Chronos family (Chronos[small], Chronos[bolt_small], Chronos2) - pretrained_models=Yes for every row in this block. Nothing else differs between runs: only eval_metric (the fitting objective) varies."
+  time_limit_s: "900"             # settled per Results/PILOT_FINDINGS_INTERIM.md - 600s left 2/3 Chronos variants and AutoCES unfitted; 900s fits the complete pool every time
+  num_val_windows: "2 (validation_periods=24 / n_periods=12)"
+  quantile_levels: "0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"
+  target_transformation: "Index level, 2021=100. All 18 metrics are also computed post-hoc on the derived month-on-month and year-on-year transforms."
+  random_seed: "123"
+  training_window: "FIXED ROLLING window, 100+24=124 monthly periods (train_periods=100, validation_periods=24). Read train_data_start/train_data_end per row; asserted to be exactly 124 rows."
+  refit_full: "False - frozen CONTROLS decision 2026-09-22 (INDEX_SET_CHANGE.md). Verify per-run that deployed_model is WeightedEnsemble, not WeightedEnsemble_FULL."
+  pretrained_models: "Included (Chronos, Chronos-Bolt, Chronos-2) for every row - verify against the fitted leaderboard (model_pool_fitted in run_config.json), not just the requested hyperparameters."
+  data_source_and_vintage: "Data/final_data.csv - see Data/final_data_notes.md"
+  series_start_date: "HCPI/FCPI Jan 2014; CCPI chain-linked onto the same basis (see INDEX_SET_CHANGE.md); this block's 124-period window only exists from May 2024 onward, confining it to R6 (post-stabilisation)."
+  hardware: "Local GPU only (record name, VRAM and driver per run). One machine for the whole block - the metric comparison is only valid if the fitting objective is the sole difference between runs."

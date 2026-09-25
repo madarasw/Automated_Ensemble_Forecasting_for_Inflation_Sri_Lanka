@@ -6,8 +6,8 @@ YAMLs - never the .xlsx - so a plan change is only live once this has been run.
 import csv, os, openpyxl
 
 PLAN = "Main_Experiment_Plan.xlsx"
-OUT_CSV = "out/Code/experiments.csv"
-OUT_CFG = "out/Code/common"
+OUT_CSV = "Code/experiments.csv"
+OUT_CFG = "Code/common"
 
 wb = openpyxl.load_workbook(PLAN, data_only=True)
 ws = wb["MASTER"]
@@ -53,8 +53,15 @@ for r in rows:
 for sheet, sub in sorted(tabs.items()):
     a = sub[0]
     freqs = sorted({x["frequency"] for x in sub})
-    stage_label = ('Stage 3 - run after the metric is chosen'
-                   if int(a['tab'].split()[1]) <= 4 else 'Stage 1 - run first')
+    indices = sorted({x["index"] for x in sub})
+    index_names = sorted({x["index_name"] for x in sub})
+    tab_num = int(a['tab'].split()[1])
+    if tab_num == 22:
+        stage_label = 'Baseline - no fitting objective, runs independently of Stage 1/3'
+    elif tab_num <= 4:
+        stage_label = 'Stage 3 - run after the metric is chosen'
+    else:
+        stage_label = 'Stage 1 - run first'
     path = f"{OUT_CFG}/config_{sheet}.yaml"
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"""# Configuration for {sheet}
@@ -73,8 +80,8 @@ tab_name: "{sheet}"
 stage: "{stage_label}"
 
 target:
-  index: "{a['index']}"
-  index_name: "{a['index_name']}"
+  index: {'"' + a['index'] + '"' if len(indices) == 1 else '[' + ", ".join(f'"{i}"' for i in indices) + ']'}
+  index_name: {'"' + a['index_name'] + '"' if len(index_names) == 1 else '[' + ", ".join(f'"{n}"' for n in index_names) + ']'}
   frequencies: [{", ".join(f'"{x}"' for x in freqs)}]
 
 evaluation:

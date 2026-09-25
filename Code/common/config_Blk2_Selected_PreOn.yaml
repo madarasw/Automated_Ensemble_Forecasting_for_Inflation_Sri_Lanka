@@ -1,0 +1,73 @@
+# Configuration for Blk2_Selected_PreOn (Block 2.1 - the revised origin extension)
+#
+# Everything in this file is CONSTANT across all 99 experiments in this block EXCEPT
+# eval_metric, which VARIES BY INDEX: the fitting objectives were selected separately for
+# each target in Block 1.1, ranked on YoY accuracy (Results/Blk11_OBJECTIVE_SELECTION.md,
+# section 10). Each row of Code/experiments.csv supplies its own eval_metric; the runner
+# reads it per-row - never assume one objective per index or per block.
+#
+# 3 indices x 3 selected objectives per index x 11 monthly origins (o53-o63, May 2024 -
+# Mar 2025 horizon starts) = 99 runs. With Block 1.1's o64-o69 these give all 17 origins a
+# 124-month window can reach on HCPI/FCPI.
+#
+# The Blk2_Selected_PreOn tab also hosts B22-* (block 2.2, Quarterly) and B23-* (block 2.3,
+# Annual) rows, and 36 BL-M-* baseline rows (Blk5_Baselines) also carry block == "2.1".
+# None of those are in scope here - hence the exp_id prefix in the filter.
+
+block: "2.1"
+tab_name: "Blk2_Selected_PreOn"
+stage: "Stage 2 - origin extension with the per-index objectives selected in Block 1.1"
+
+target:
+  index: ["HCPI", "FCPI", "CCPI"]
+  index_name: ["Headline Consumer Price Index", "Food Consumer Price Index", "Colombo Consumer Price Index"]
+  frequencies: ["Monthly"]
+
+evaluation:
+  metric_code: "VARIES BY INDEX - HCPI {EM12, EM11, EM13}; FCPI {EM11, EM4, EM2}; CCPI {EM12, EM13, EM14}"
+  metric_name: "VARIES BY INDEX - HCPI {DTW, MQL, Soft-DTW}; FCPI {MQL, MAPE, MAE}; CCPI {DTW, Soft-DTW, Wasserstein}"
+  metric_family: "VARIES"
+  # Only the FITTING objective is restricted. All 17 EM2-EM18 metrics are still computed
+  # post-hoc on level / period_on_period / year_on_year for every run, exactly as in
+  # Block 1.1.
+
+records:
+  point_forecasts: true
+  quantile_forecasts: true
+  weight_distribution: true
+  execution_time: true
+
+experiments:
+  source: "Code/experiments.csv"
+  filter: 'block == "2.1" and exp_id startswith "B21-"'
+  count: 99
+  # block == "2.1" alone returns 135 rows (99 B21-M-* + 36 BL-M-*) - the runner asserts 99.
+  # Each row supplies: exp_id, index, eval_metric, origin_no, frequency, horizon_start,
+  # horizon_end, n_periods, train_data_start, train_data_end, train_periods,
+  # validation_periods, total_window, pretrained_models, refit_full.
+
+output:
+  workbook: "Results/Results_Blk2_Selected_PreOn.xlsx"
+  sheet_per_experiment: true      # sheet name = exp_id
+  run_config_json: true           # written beside each result, Results/RunConfigs/Blk2_Selected_PreOn/<exp_id>.json
+  progress_file: "Results/PROGRESS.md"  # rewritten after every run
+
+runtime:
+  resume: true                    # skip any exp_id that already has a result sheet
+
+controls:
+  framework: "AutoGluon-TimeSeries"
+  framework_version: "1.6.3"
+  model_pool: "Fixed, fully enumerated 14-model pool + Chronos family (Chronos[small], Chronos[bolt_small], Chronos2) - pretrained_models=Yes for every row in this block. Identical to Block 1.1."
+  fitting_objective: "VARIES BY INDEX - selected separately for each target in Block 1.1, ranked on YoY accuracy (mean |forecast YoY - actual YoY| in pp over Block 1.1's 72 forecast months); see Results/Blk11_OBJECTIVE_SELECTION.md section 10. HCPI: EM12 (DTW), EM11 (MQL), EM13 (Soft-DTW). FCPI: EM11 (MQL), EM4 (MAPE), EM2 (MAE). CCPI: EM12 (DTW), EM13 (Soft-DTW), EM14 (Wasserstein). 11 rows per (index, objective)."
+  time_limit_s: "900"             # same as Block 1.1 (Results/PILOT_FINDINGS_INTERIM.md)
+  num_val_windows: "2 (validation_periods=24 / n_periods=12)"
+  quantile_levels: "0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"
+  target_transformation: "Index level, 2021=100. All EM2-EM18 metrics are also computed post-hoc on the derived month-on-month and year-on-year transforms."
+  random_seed: "123"
+  training_window: "FIXED ROLLING window, 100+24=124 monthly periods (train_periods=100, validation_periods=24). Read train_data_start/train_data_end per row; asserted to be exactly 124 rows."
+  refit_full: "False - frozen CONTROLS decision 2026-09-22 (INDEX_SET_CHANGE.md). Verify per-run that deployed_model is WeightedEnsemble, not WeightedEnsemble_FULL."
+  pretrained_models: "Included (Chronos, Chronos-Bolt, Chronos-2) for every row - verify against the fitted leaderboard (model_pool_fitted in run_config.json)."
+  data_source_and_vintage: "Data/final_data.csv - see Data/final_data_notes.md"
+  series_start_date: "HCPI/FCPI Jan 2014; CCPI chain-linked onto the same basis (see INDEX_SET_CHANGE.md). Origin 53 trains from Jan 2014, the first month HCPI/FCPI exist."
+  hardware: "Local GPU only (record name, VRAM and driver per run). Same machine and GPU as Block 1.1."

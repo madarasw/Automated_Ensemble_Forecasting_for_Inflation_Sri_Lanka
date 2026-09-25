@@ -1,0 +1,62 @@
+# Configuration for Tab22_Baselines
+#
+# Everything in this file is CONSTANT across all 550 experiments in this tab.
+# The only thing that varies between experiments is the forecast origin, which comes
+# from Code/experiments.csv (filter: tab_name == "Tab22_Baselines").
+#
+# The values under `controls:` MUST be identical in all 21 tab configs. The Stage 1
+# comparison only works if the evaluation metric is the sole difference between tabs -
+# if one tab runs with a different time limit or seed, the weight difference gets
+# blamed on the metric when it was really the setting.
+
+tab: "Tab 22"
+tab_name: "Tab22_Baselines"
+stage: "Baseline - no fitting objective, runs independently of Stage 1/3"
+
+target:
+  index: ["CCPI", "FCPI", "HCPI"]
+  index_name: ["Colombo Consumer Price Index", "Food Consumer Price Index", "Headline Consumer Price Index"]
+  frequencies: ["Annual", "Monthly", "Quarterly"]
+
+evaluation:
+  metric_code: "N/A"
+  metric_name: "Baseline (no fitting objective)"
+  metric_family: "Baseline"
+  # This metric is the ENSEMBLE-FITTING OBJECTIVE. Every other metric is still
+  # computed afterwards for reporting.
+
+records:
+  point_forecasts: true
+  quantile_forecasts: false
+  weight_distribution: true
+  execution_time: true
+
+experiments:
+  source: "Code/experiments.csv"
+  filter: 'tab_name == "Tab22_Baselines"'
+  count: 550
+  # Each row supplies: exp_id, frequency, horizon_start, horizon_end, n_periods,
+  # train_data_end. Train on data from series start THROUGH train_data_end inclusive.
+
+output:
+  workbook: "Results/Results_Tab22_Baselines.xlsx"
+  sheet_per_experiment: true      # sheet name = exp_id
+  run_config_json: true           # write resolved settings beside each result
+
+runtime:
+  resume: true                    # skip any exp_id that already has results -
+                                  # a Colab disconnect must not cost the whole tab
+
+controls:
+  framework: "AutoGluon-TimeSeries"
+  framework_version: "1.6.3"
+  preset_model_pool: "TWO POOLS, fixed: Sets 1 & 2 = highest-quality preset with ALL pretrained foundation models EXCLUDED (Chronos, Chronos-Bolt, Chronos-2). Set 3 = the same preset WITH them included. Nothing else differs between the pools."
+  time_limit_s: "600"
+  num_val_windows: "2 at every frequency. With val_step_size = prediction_length this is 24 months everywhere: 2x12 monthly, 2x4 quarterly, 2x1 annual. Identical across sets so only training length and model pool vary."
+  quantile_levels: "0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"
+  target_transformation: "Index level, 2021=100. Metrics are computed on the derived month-on-month and year-on-year transforms as well; the directional and temporal scorers transform internally."
+  random_seed: "123"
+  training_window: "PER SET, fixed rolling window (no longer expanding). Monthly: Set 1 = 72, Sets 2/3 = 100. Quarterly: Set 1 = 24, Sets 2/3 = 33. Annual: Sets 2/3 = 8; Annual Set 1 is REMOVED (6 observations minus 2 validation years leaves 4 - not fittable). See train_window_periods."
+  data_source_and_vintage: "Data/final_data.csv - see Data/final_data_notes.md"
+  series_start_date: "HCPI/FCPI Jan 2014; CCPI Sep 2012. See Data/methodology_data_collection.md."
+  hardware: "Local GPU (record name, VRAM and driver per run). Not Colab."

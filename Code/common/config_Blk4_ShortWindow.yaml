@@ -1,0 +1,74 @@
+# Configuration for Blk4_ShortWindow - the model arm of Block 4.1 (short-window skill test)
+#
+# Blocks 1.1 and 2.1 covered 17 origins at a 124-month window with foundation models on,
+# and no benchmark was run against them. Block 4.1 is what can establish skill: 69 rolling
+# origins across all six regimes, a 72-month window, foundation models OFF, and a paired
+# baseline arm (Blk5_Baselines, BL-M-*) on the identical origins and windows.
+#
+# Everything in this file is CONSTANT across all 207 experiments EXCEPT eval_metric, which
+# VARIES BY INDEX (one objective per target - the top YoY-ranked objective from Block 1.1).
+# Each row of Code/experiments.csv supplies its own eval_metric; the runner reads it
+# per-row - never hardcode it:
+#     HCPI  EM12 (DTW)          B41-M-001 .. B41-M-069
+#     FCPI  EM11 (MQL)          B41-M-070 .. B41-M-138
+#     CCPI  EM13 (Soft-DTW)     B41-M-139 .. B41-M-207
+#
+# FILTER TRAP: block == "4.1" returns 414 rows - it also holds the 207 BL-M-* baseline rows
+# of Blk5_Baselines. The runner filters on BOTH block == "4.1" AND exp_id prefix "B41-" and
+# asserts 207 rows.
+
+block: "4.1"
+tab_name: "Blk4_ShortWindow"
+stage: "Stage 4 - short-window skill test, model arm (paired with Blk5_Baselines)"
+
+target:
+  index: ["HCPI", "FCPI", "CCPI"]
+  index_name: ["Headline Consumer Price Index", "Food Consumer Price Index", "Colombo Consumer Price Index"]
+  frequencies: ["Monthly"]
+
+evaluation:
+  metric_code: "VARIES BY INDEX - HCPI EM12; FCPI EM11; CCPI EM13"
+  metric_name: "VARIES BY INDEX - HCPI DTW; FCPI MQL; CCPI Soft-DTW"
+  metric_family: "VARIES"
+  # Only the FITTING objective is restricted. All 17 EM2-EM18 metrics are still computed
+  # post-hoc on level / period_on_period / year_on_year for every run, as in Block 1.1.
+
+records:
+  point_forecasts: true
+  quantile_forecasts: true
+  weight_distribution: true
+  execution_time: true
+
+experiments:
+  source: "Code/experiments.csv"
+  filter: 'block == "4.1" and exp_id startswith "B41-"'
+  count: 207
+  # Each row supplies: exp_id, index, eval_metric, origin_no, frequency, horizon_start,
+  # horizon_end, n_periods, train_data_start, train_data_end, train_periods,
+  # validation_periods, total_window, pretrained_models, refit_full.
+
+output:
+  workbook: "Results/Results_Blk4_ShortWindow.xlsx"
+  sheet_per_experiment: true      # sheet name = exp_id
+  run_config_json: true           # Results/RunConfigs/Blk4_ShortWindow/<exp_id>.json
+  progress_file: "Results/PROGRESS.md"  # rewritten after every run
+
+runtime:
+  resume: true                    # skip any exp_id that already has a result sheet
+
+controls:
+  framework: "AutoGluon-TimeSeries"
+  framework_version: "1.6.3"
+  model_pool: "Fixed, fully enumerated 14-model from-scratch pool ONLY. Pretrained foundation models (Chronos[small], Chronos[bolt_small], Chronos2) are DISABLED - pretrained_models=No for every row, so they are absent from the hyperparameters passed to .fit()."
+  fitting_objective: "VARIES BY INDEX - HCPI EM12 (DTW), FCPI EM11 (MQL), CCPI EM13 (Soft-DTW). Read per row from eval_metric."
+  time_limit_s: "900"             # same as Blocks 1.1 / 2.1
+  num_val_windows: "2 (validation_periods=24 / n_periods=12)"
+  quantile_levels: "0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9"
+  target_transformation: "Index level, 2021=100. All EM2-EM18 metrics are also computed post-hoc on the derived month-on-month and year-on-year transforms."
+  random_seed: "123"
+  training_window: "FIXED ROLLING window, 48+24=72 monthly periods (train_periods=48, validation_periods=24). Read train_data_start/train_data_end per row; asserted to be exactly 72 rows."
+  refit_full: "False - frozen CONTROLS decision 2026-09-22 (INDEX_SET_CHANGE.md). Verify per-run that deployed_model is WeightedEnsemble, not WeightedEnsemble_FULL."
+  pretrained_models: "DISABLED (No) for every row - verify per-run that no Chronos variant appears in the fitted leaderboard (model_pool_fitted in run_config.json)."
+  data_source_and_vintage: "Data/final_data.csv - see Data/final_data_notes.md"
+  series_start_date: "HCPI/FCPI Jan 2014; CCPI chain-linked onto the same basis (see INDEX_SET_CHANGE.md). Origin 1 trains from Jan 2014, the first month HCPI/FCPI exist."
+  hardware: "Local GPU only (record name, VRAM and driver per run). Same machine and GPU as Blocks 1.1 / 2.1."
